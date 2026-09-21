@@ -26,6 +26,9 @@
 
 - 変更に応じた型検査・ビルド・テストを実行する。実行できなかった検証は理由とともに報告する。
 - 開発コマンドはpnpm dev、型検査はpnpm typecheck、テストはpnpm test、ビルドはpnpm buildとする。まとめて検証する場合はpnpm checkを使う。
+- formatter・linterはBiomeに統一する。整形はpnpm format、lintはpnpm lint、安全なlint修正はpnpm lint:fixを使う。pnpm checkには整形・lint・import整理の確認も含む。警告も失敗として扱う。
+- コミット前にHuskyとlint-stagedでステージ対象を検査・安全に自動修正する。フックを迂回せず、未解決の指摘は修正する。--unsafeによる一括修正は行わない。
+- Biomeは標準の整形設定と推奨lintルールを使う。対象はTypeScript・JavaScript・JSON・JSONCとし、個人データ・生成物を除外する。Markdown・YAMLの整形ツールは追加しない。
 - 操作履歴を残す意味でも、一連の操作の区切りの都度gitへコミットする。
 - コミット前に差分を確認し、無関係な変更や機密情報を含めない。
 - ユーザーが作成した変更を勝手に取り消さない。

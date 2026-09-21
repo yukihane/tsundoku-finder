@@ -1,31 +1,41 @@
 {
-  "name": "tsundoku-finder",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Find your next read in your owned ebook library.",
-  "type": "module",
-  "packageManager": "pnpm@12.5.1",
-  "scripts": {
-    "dev": "tsx src/cli.ts",
-    "build": "tsc -p tsconfig.build.json",
-    "start": "node dist/cli.js",
-    "typecheck": "tsc --noEmit",
-    "test": "tsx --test test/*.test.ts",
-    "check": "pnpm typecheck && pnpm test && pnpm build"
-  },
-  "devEngines": {
-    "runtime": {
-      "name": "node",
-      "version": "24.21.0",
-      "onFail": "download"
-    }
-  },
-  "devDependencies": {
-    "@types/node": "^24.13.6",
-    "tsx": "4.23.15",
-    "typescript": "7.0.2"
-  },
-  "dependencies": {
-    "playwright": "1.63.0"
-  }
+	"name": "tsundoku-finder",
+	"version": "0.1.0",
+	"private": true,
+	"description": "Find your next read in your owned ebook library.",
+	"type": "module",
+	"packageManager": "pnpm@12.5.1",
+	"scripts": {
+		"dev": "tsx src/cli.ts",
+		"build": "tsc -p tsconfig.build.json",
+		"start": "node dist/cli.js",
+		"typecheck": "tsc --noEmit",
+		"test": "tsx --test test/*.test.ts",
+		"format": "biome format --write .",
+		"lint": "biome lint --error-on-warnings .",
+		"lint:fix": "biome lint --write --error-on-warnings .",
+		"check": "biome check --error-on-warnings . && pnpm typecheck && pnpm test && pnpm build",
+		"prepare": "husky"
+	},
+	"lint-staged": {
+		"*.{ts,tsx,cts,mts,js,jsx,cjs,mjs,json,jsonc}": "pnpm exec biome check --write --error-on-warnings --no-errors-on-unmatched"
+	},
+	"devEngines": {
+		"runtime": {
+			"name": "node",
+			"version": "24.21.0",
+			"onFail": "download"
+		}
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.5.14",
+		"@types/node": "^24.13.6",
+		"husky": "9.1.7",
+		"lint-staged": "17.5.1",
+		"tsx": "4.23.15",
+		"typescript": "7.0.2"
+	},
+	"dependencies": {
+		"playwright": "1.63.0"
+	}
 }

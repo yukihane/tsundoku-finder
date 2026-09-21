@@ -28,7 +28,16 @@ Node.jsは事前インストール不要です。`package.json`の`devEngines.ru
 | `pnpm test` | Node.js標準テストランナーでテスト |
 | `pnpm build` | `dist/`にJavaScriptを生成 |
 | `pnpm start` | ビルド済みCLIを実行（事前にbuildが必要） |
-| `pnpm check` | 型検査・テスト・ビルドを順に実行 |
+| `pnpm format` | Biomeで整形 |
+| `pnpm lint` | Biomeでlint（警告も失敗扱い） |
+| `pnpm lint:fix` | Biomeで安全なlint修正 |
+| `pnpm check` | Biomeの整形・lint・import整理の確認、型検査・テスト・ビルド |
+
+BiomeはTypeScript・JavaScript・JSON・JSONCを対象とし、標準の整形設定・推奨lintルール・import整理を使います。Markdown・YAML、生成物、`.local/`などの個人データは対象外です。まとめて安全に修正する場合は`pnpm exec biome check --write .`を使います。
+
+`pnpm install`のprepare処理で、このリポジトリにHuskyのGitフックを設定します。コミット前に`pnpm exec lint-staged`がコミット対象へBiomeの安全な自動修正を実行し、結果をステージします。警告・エラーが残るとコミットを停止します。部分ステージ時の未ステージ変更はlint-stagedが一時退避・復元します。復元で競合した場合は表示される案内に従い、差分を確認してください。
+
+フックにも単体で動作するpnpmが必要です。GUIからコミットする場合は、そのアプリのPATHにもpnpmが必要です。グローバルのNode.jsは不要です。フックの再設定は`pnpm run prepare`で行います。型検査・テスト・ビルドはフックには含めず、作業の区切りに`pnpm check`を実行します。
 
 ## Kindle取得プロトタイプ
 

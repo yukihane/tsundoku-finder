@@ -62,6 +62,8 @@ flowchart TD
 
 CLIはsrc/cli.tsを入口とし、ビルド結果はdist/に出力する。開発・検証手順は[README](../README.md)を参照する。DB・MCPのライブラリは各機能の実装時に選定する。
 
+formatter・linterはBiomeに統一し、標準の整形設定・推奨lintルール・import整理を使う。対象はTypeScript・JavaScript・JSON・JSONCとし、個人データと生成物を除外する。Huskyとlint-stagedによりコミット前にステージ対象へ安全な自動修正を行い、残った警告・エラーはコミットを停止させる。全体検証のpnpm checkでもBiomeを実行する。TypeScript 7.0.2を維持し、型検査は引き続きTypeScriptコンパイラが担当する。
+
 ### Kindle取得プロトタイプ
 
 - Amazon.co.jpのKindle for Web本棚を対象に、Playwrightで表示されたDOMから情報を取得する。

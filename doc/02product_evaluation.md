@@ -194,3 +194,13 @@ Steamには `GetOwnedGames` APIがあり、公開状態などの条件に応じ�
 画面の`ContentCategoryDropDown`と`ContentSubCategoryDropDown`内の`.drop-down-text`で現在の「本」「購入済み」を確認できる。`content-author-{ASIN}`から著者表示も取得できた。実装は初回ページの読み込み後、件数と行数・一意なASIN・必須項目を検証する。架空ページのテストでは、異なるURL・検索中・未選択の購入済みメニュー項目・途中読み込み・取得日の欠落・重複IDを拒否することを確認した。
 
 これは少数取得と今回の認証再利用の検証であり、長期セッション維持・全件同期・返金後の分類を保証するものではない。
+
+## 9. Biomeとコミット前チェック
+
+検証日: 2026-09-22。Biome 2.5.14・Husky 9.1.7・lint-staged 17.5.1を採用し、TypeScript 7.0.2は維持した。BiomeはTypeScriptコンパイラAPIに依存しないが、新構文への対応は別途確認が必要。[Biomeの言語対応](https://biomejs.dev/internals/language-support/)と[TypeScript 7のAPI互換性の説明](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/)を参照。
+
+既存コード全体のBiomeチェック・型検査・テスト6件・ビルドが成功した。整形はデフォルト（タブ・ダブルクォート等）を使用。推奨lintルールを有効にし、非nullアサーションと文字列連結の指摘は挙動を保って修正した。2.5.14では`rules.recommended`が非推奨のため`rules.preset: "recommended"`を指定した。
+
+Git対象外の独立した検証用リポジトリで実際のHuskyフックを実行し、自動整形・部分ステージの未ステージ変更保持・lint警告によるコミット停止・Markdownのみのコミット成功・`.local/`の除外を確認した。lint-stagedには安全な修正のみを許可し、`--unsafe`は使用しない。未宣言変数などTypeScriptコンパイラが担当する検査は、Biomeだけで代替しない。
+
+出典: [BiomeのGitフック連携](https://biomejs.dev/recipes/git-hooks/)、[Biome設定](https://biomejs.dev/reference/configuration/)、[Huskyの運用](https://typicode.github.io/husky/how-to.html)。長期運用・別OS・GUIごとのPATH設定は未検証。
