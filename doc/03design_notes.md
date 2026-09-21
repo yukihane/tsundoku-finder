@@ -367,3 +367,93 @@ OR検索は引き続きTODO。実際のストア対応を進める段階で必�
 - 読書状態・進捗表示は書誌情報から独立した取得日時付き記録を候補とする。未読／既読／読みかけ／不明の扱いと更新単位を決めるまでは、観測値を調査用JSONに保持する。
 - 公式CSVはDOM巡回の代替候補としてTODOに追加する。列や対象範囲は未確認で、今回ダウンロードしない。手動CSV運用を必須にする設計変更ではない。
 - アーカイブ・話購入・連携由来・無料取得・未ログインの商品情報取得は未確認として残す。全件対応の完了条件を決める際に必要な範囲だけ追加検証する。
+
+## 12. Kindle・BOOK☆WALKERの共通保存形式案
+
+2026-09-22。既存実装と保存済みBOOK☆WALKERサンプルを照合して具体化した案。設計決定・実装・DB移行はまだ行っていない。追加のWeb取得は不要で、まず架空データと隔離DBで実装・検証できる範囲を示す。
+
+### 境界と識別子
+
+処理を「ストア別ファイルの検証・変換 → 共通の所有情報入力 → DB保存」に分ける。共通入力はアプリ内部の型であり、任意のJSONを無検証でDBへ渡す新しい入口にはしない。KindleのASIN・URL・全件取得検証はKindle側に残す。
+
+| 共通項目 | Kindleからの対応 | BOOK☆WALKERからの対応案 |
+|---|---|---|
+| store | kindle-jp | bookwalker-jp |
+| productId | ASINを維持 | 商品URLのde接頭辞を除いた小文字UUID。URL全体も別に保存し、両者の一致を検証 |
+| title / authorsText | 一覧の表示文字列 | 一覧の表示文字列。「ほか」があっても取得値として許容し、完全な著者一覧とはみなさない |
+| acquiredDateText | 取得日表示 | 購入日時表示をそのまま保存。共通の年月日型への変換を必須にしない |
+| productUrl | 検証済みのASIN由来URL | 一覧で観測した商品URLを検証して保存 |
+| ownership | purchased | purchased。購入済み一覧に掲載された意味とし、有料購入という意味にはしない |
+| capturedAt / source / pageNumber | 商品を観測したページの取得日時・URL・ページ | 同左。JSONを再解析した日時を観測日時に置き換えない |
+
+BOOK☆WALKERの保存済み25件では、書名・購入日時の欠損はなく、すべて上記UUID形式のURLだった。これを全商品で必須項目が埋まる保証とはしない。初回はbooksのNOT NULLを維持し、将来実際に購入日時が欠ける取得例が出た場合にnullable化を検討する。架空の日付・空の日付を埋めて通さない。authorsTextの空文字許容は現行Kindleと同様とする。
+
+### 所有情報の内部入力
+
+以下は型の概略。文字列の長さ・日時形式・重複・URLと商品IDの一致などは実行時にも検証する。
+
+```typescript
+type Store = "kindle-jp" | "bookwalker-jp";
+
+interface OwnershipImport {
+  id: string;
+  store: Store;
+  startedAt: string;
+  completedAt: string; // 今回の取得処理の終了時刻。全所有の取得完了とは別
+  coverage: {
+    status: "partial" | "complete";
+    scope: "kindle-purchased-list" | "bookwalker-holdbooks";
+  };
+  books: Array<{
+    productId: string;
+    title: string;
+    authorsText: string;
+    acquiredDateText: string;
+    productUrl: string;
+    ownership: "purchased";
+    evidence: {
+      source: string;
+      capturedAt: string;
+      pageNumber: number;
+      kind: "amazon-content-filter" | "bookwalker-holdbooks";
+      category: string | null;
+      filter: string | null;
+      details: Record<string, unknown>; // 実際の型・検証はkindごとの既知項目に限定
+    };
+  }>;
+}
+```
+
+- Kindleは既存readKindleImportの検証後に変換する。既存ファイル一式のハッシュidを変えず、再取り込み抑止を維持する。category=`本`、filter=`購入済み`を保持する。
+- BOOK☆WALKERのkindは一覧の出典を表す。Amazonと同じフィルターがあることにはしない。category/filterはnullにし、画面タイトル、表示範囲、ページサイズ、検索・絞り込みの表示値、並び順、シリーズ集約の有無をdetailsの既知項目として定義する。非表示・未取得の値を「絞り込みなし」で補わない。
+- coverageのcompleteは指定scopeを検証済みの条件で取得した意味であり、アーカイブ・話購入を含めたアカウントの全所有を保証しない。ページ総数に達したという理由だけで判定せず、ストア別検証器が対象範囲・連続性・重複・終端を確認する。BOOK☆WALKERのcomplete対応は実地確認まで実装しない。
+- 部分取得も、観測した商品の所有根拠としては利用できる。将来のBOOK☆WALKER取り込みはpartialを明示して許容する案とし、既存import-kindleの未完了・サンプル拒否は緩めない。いずれも不在を削除根拠にしない。
+- 新しいBOOK☆WALKERのidはストア・入力形式版を含む検証済み文書のハッシュとする。再実行だけで変わる取り込み時刻をハッシュに含めない。同一商品・同一観測時刻で異なる所有情報が来た場合は、取り込み順で勝者を決めず競合として拒否する案とする。
+
+### 最小のDB変更案（スキーマv3）
+
+| 対象 | 変更案 | 理由 |
+|---|---|---|
+| books | カラム・複合主キーを維持 | TEXTの商品IDはUUIDを保持でき、今回のサンプルには購入日時もある |
+| imports | json_valid制約付きのcoverage TEXTを追加 | 部分取得と対象範囲の取得完了を区別する。旧履歴の未記録情報を捏造しないため、移行済みの旧行はNULLを許可し、新規書き込みは必須にする |
+| ownership_evidence | category/filterをnullable化し、json_valid制約付きdetails TEXTを追加 | Kindle固有フィルターがないストアにも対応する。旧行の既存カラムは維持し、detailsは空オブジェクトとする |
+| metadata_snapshots / latest_metadata | テーブル・ビューは維持 | 新しいストア・JSON形式は取り込み検証側で対応できる |
+
+category/filterの制約変更ではownership_evidenceをトランザクション内で再作成・コピーする。既存の所有根拠、外部キー、主キーを保持する。移行時に商品ID・取り込みハッシュ・保存済み書誌JSONを書き換えない。書き込みSQLはカラム名を明示し、カラム追加でINSERTの位置がずれないようにする。
+
+共通のDB保存はKindleImportに依存させず、最新値・first/last_seen・履歴・トランザクションの既存方針を維持する。ストア別入口はファイル検証をDBオープン前に完了させる。読み取りはv1/v2/v3に対応し、自動移行しない。現在の検索・詳細は`user_version === 2`で書誌の有無を判定しているため、v3を追加するときに必ず修正する。
+
+### 書誌情報と読書状態
+
+- 書誌は現在の共通項目名を維持し、BOOK☆WALKER用形式を追加する。ID・商品URL・シリーズURLの検証はストア別に行い、Kindle版表示の検証をBOOK☆WALKERへ強制しない。既存Kindle文書の正規化結果とハッシュは変更しない。
+- BOOK☆WALKER文書にはlabel（文字列またはnull）、genres（文字列配列）、distributionDateText（配信開始日の文字列またはnull）を追加する案とする。カテゴリとジャンル、配信開始日と発売日は分ける。発売日が不明ならpublicationDateTextはnull。検索ではlabel/genresも対象に加え、旧文書の未定義項目は検索上の空値として扱う。
+- 今回は商品ページから一式を補完する入口を先に作る案とする。一覧で取れた出版社等だけを疎な最新書誌スナップショットとして取り込むと、既存の紹介文等が検索から消えるため、一覧書誌と商品ページ書誌の自動合成は先行しない。調査用JSONは保持する。
+- 読書状態は所有情報・書誌と別の取得履歴が必要になるが、今回はテーブル追加をしない。将来は商品キー・観測日時・出典・元の表示・解釈した状態を保持する方向で検討する。未取得を未読とみなさず、進捗`--`は数値0へ変換しない。Kindle側の未着手・読書中調査も保留を維持する。
+
+### 実装の区切りと確認方法
+
+1. 共通内部型、Kindle変換、v3移行と共通保存、ストア別ID検証を実装する。CLIは既存`library get <ASIN>`を維持し、BOOK☆WALKER用に`library get <UUID> --store bookwalker-jp`を追加する案とする。架空データ・一時DBだけで両ストアの保存・検索・詳細取得まで検証する。
+2. BOOK☆WALKERの保存ファイル形式・検証器と少数取得コマンドを作る。現在のJSONは調査用で、検索欄・各フィルター・表示範囲などの証拠が不足している。そのまま正式な所有取り込みへ昇格させず、オフライン抽出の検証に再利用する。必要な証拠の追加取得は同じ固定サンプルに限定する。
+3. BOOK☆WALKERの商品ページ補完とJSON取り込みを追加する。既存Kindleとの混在検索を隔離DBで検証してから、実DBへの取り込みを扱う。全件巡回・CSV・読書状態・OR検索はこの区切りの対象外とする。
+
+移行テストではv1/v2の架空DBの全行・ハッシュ・外部キーの保持、失敗時のロールバック、読み取り時に未移行であることを確認する。共通保存ではストア間のID衝突、異なるID形式、同一入力の再取り込み、古い観測の後入れ、同時刻競合、partialとcomplete、不正URL・所有根拠の拒否を確認する。既存Kindle取り込みの検証を弱めないことも回帰テストに含める。
