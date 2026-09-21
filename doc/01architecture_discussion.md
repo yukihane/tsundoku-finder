@@ -22,6 +22,7 @@
 - 電子書籍本文の取得・DRM解除・本文の要約は対象にしない。
 - 公開されている紹介文・あらすじなどを推薦の材料にする。
 - 手動CSV取り込みは初回リリースまでは検討対象にしない。
+- プロトタイピング中は旧スキーマ・保存形式・CLIとの互換性を必須要件にしない。必要な変更は最新版に揃えて行う。保存済みデータの再利用と、取得し直しを最小限にする方針は維持する。
 
 ## 3. システム構成
 
@@ -125,7 +126,7 @@ formatter・linterはBiomeに統一し、標準の整形設定・推奨lintル�
 
 - `library search "検索語" [--publisher "出版社"] [--limit 1〜100] [--offset 0〜100000]`で書名・著者表示と最新の補完情報（書名・著者表示・出版社・紹介文・分類・シリーズ表示）を部分一致検索する。空白区切りはAND条件、空文字列は全件を対象とする。出版社指定は補完情報の出版社への部分一致による追加条件とする。ASCII英字の大小は区別しないが、全半角や表記揺れの正規化は行わない。
 - 件数の既定は20件。ストア・商品IDの順で安定して並べ、総件数・次のoffsetとともにJSONを返す。検索文字列は最大200文字で、SQLパラメーターとして渡す。`%`や`_`をワイルドカードとして解釈しない。
-- `library get <ASIN>`でKindleの書籍詳細・最新の所有確認根拠・最新の補完情報をJSONで返す。未登録の場合は`book: null`、補完情報がない場合は`metadata: null`とする。
+- `library get <商品ID> [--store kindle-jp|bookwalker-jp]`で書籍詳細・最新の所有確認根拠・最新の補完情報をJSONで返す。ストア既定値はkindle-jp。KindleはASIN、BOOK☆WALKERはde接頭辞なしの小文字UUIDを指定する。未登録の場合は`book: null`、補完情報がない場合は`metadata: null`とする。
 - CLIから独立した検索モジュールを設ける。接続は読み取り専用とし、DBがない場合は新規作成せず失敗する。
 - AND・ORを組み合わせる検索CLIの拡張はTODOとして後回しにし、DB整備を優先する。現行の検索機能は維持する。
 - MCPは必要性を再検討した結果、導入を保留する。まずSQLite＋CLIで実際の検索を試し、接続先の要件が明らかになってから追加を判断する。
@@ -151,12 +152,21 @@ formatter・linterはBiomeに統一し、標準の整形設定・推奨lintル�
 - `metadata import <JSONファイル>`で1冊分の保存済み書誌JSONを既存の蔵書DBへ取り込む。ネットワーク・ブラウザは使わない。形式・商品ID・出典・取得日時・欠損表示を検証し、未所有の商品は拒否する。
 - `metadata_snapshots`に出典・取得日時を含む文書全体を保存し、所有情報を上書きしない。検証後の文書のSHA-256で同一内容の再取り込みを抑止する。同じ商品・取得日時で内容が異なる場合は競合として拒否する。
 - `latest_metadata`は商品ごとに取得日時が最新の文書を選ぶ。過去の文書は保持するが、最新文書の欠損を古い値で埋めず、検索と詳細取得には最新文書を使う。
-- スキーマv1からv2への移行と保存を同一トランザクションで行い、失敗時は移行も取り消す。検索はv1の読み取りも可能であり、読み取り時に移行しない。
+- 現在のDB更新処理はv1/v2をv3へ更新し、保存と同一トランザクションで行う。失敗時は更新も取り消す。読み取り時には更新しない。旧版への長期互換は保証しない。
 - `metadata summary`は全所有冊数（total）、書誌情報を取り込み済みの冊数（captured）、未取り込み冊数（pending）、保存した履歴数（snapshots）を返す。capturedは全項目の補完完了を意味せず、欠損は各文書のmissingFieldsで確認する。
 
 ## 5. DBの保存項目とテーブル構成
 
-書誌情報の保存項目とテーブル構成は、以下のスキーマv2を当面の基本とする。取得値を使った検索補助を目的とし、既存実装を維持する。今回の確定に伴うDB移行は不要。
+保存項目とテーブル構成は以下のスキーマv3とする。所有情報の保存をストア別の検証・変換から分離する。今回の実装検証は架空データの隔離DBで行い、実蔵書DBの更新は行っていない。
+
+### 所有情報の共通保存
+
+- ストア別に検証した入力をOwnershipImportへ変換し、共通の保存処理へ渡す。Kindleのファイル検証と変換はKindle側に置く。商品ID・商品URL・所有根拠・取得日時・重複は共通保存前にも検証する。
+- booksの複合主キーと基本カラムは維持する。ownershipは購入済み一覧に載った意味でのpurchasedであり、有料取得かどうかは確定しない。
+- imports.coverageはstatusとscopeを持つJSON。現時点でKindleはcomplete/kindle-purchased-list、BOOK☆WALKERはpartial/bookwalker-holdbooksを受け付ける。completeは対象範囲の取得完了であり、すべての利用権を取得した意味ではない。
+- BOOK☆WALKERの共通保存・詳細取得は架空データで検証済み。実サイトの保存ファイル検証器・取得CLI・取り込みCLIは未実装。調査用サンプルをそのまま正式入力として扱わない。現在の内部入力は先頭一覧URLに対応し、ページ送りと画面の詳細な条件検証はストア別取得実装時に整備する。
+- 所有根拠のcategory/filterはKindleでは本/購入済み、BOOK☆WALKERではnull。kindで取得元を区別する。details.observedBookに観測時の書名・著者・購入日表示・商品URLを保持し、同じ観測日時の異なる値は拒否する。画面条件の追加項目はBOOK☆WALKER取得実装時に定義する。
+- 古い所有根拠には当時の書名等がないため、同時刻の別入力を現在値とも照合できない場合は拒否する。同一取り込みIDの再実行は変更なしとする。不在の書籍は削除しない。
 
 ### DBのテーブル構成
 
@@ -174,11 +184,13 @@ formatter・linterはBiomeに統一し、標準の整形設定・推奨lintル�
 | テーブル | カラム（キーを含む） |
 |---|---|
 | books | store, product_id, title, authors_text, acquired_date_text, product_url, ownership, first_seen_at, last_seen_at, latest_import_id |
-| imports | id, source_store, started_at, completed_at, imported_at, book_count |
-| ownership_evidence | import_id, store, product_id, page_number, source, captured_at, category, filter, kind |
+| imports | id, source_store, started_at, completed_at, imported_at, book_count, coverage |
+| ownership_evidence | import_id, store, product_id, page_number, source, captured_at, category, filter, kind, details |
 | metadata_snapshots | id, store, product_id, captured_at, document |
 
-book_count・page_numberはINTEGER、その他はTEXTで、いずれもNOT NULL。ownershipは現在purchasedのみを許可する。documentはjson_valid制約付きTEXT。その他の必須項目や形式の詳細は取り込み時の検証で保証する。取得日時はUTCのISO 8601文字列とし、商品画面に表示された購入日・発売日の文字列とは区別する。
+book_count・page_numberはINTEGER、その他はTEXT。category/filterと旧履歴のcoverageのみNULLを許可し、それ以外はNOT NULL。ownershipはpurchasedのみ。document・detailsと非NULLのcoverageにjson_valid制約を設ける。取得日時はUTCのISO 8601文字列とし、商品画面に表示された購入日・発売日の文字列とは区別する。
+
+現行のv1/v2更新処理は既存行・取り込みID・書誌JSONを保持し、旧imports.coverageはNULL、旧ownership_evidence.detailsは空オブジェクトとする。更新・取り込みを同じトランザクションで行う。旧版読取処理は現状残っているが、将来の互換性を要件とはしない。
 
 ### 書誌JSON内に保持する項目
 

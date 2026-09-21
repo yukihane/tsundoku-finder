@@ -12,6 +12,7 @@ import {
 } from "../src/library/database.js";
 import { getBook, searchBooks } from "../src/library/queries.js";
 import { importMetadata, metadataSummary } from "../src/metadata/import.js";
+import { legacySchema } from "./legacy-database.js";
 
 async function fixture(day = "22", ids = ["B000000001", "B000000002"]) {
 	const directory = await mkdtemp(join(tmpdir(), "tsundoku-import-"));
@@ -206,9 +207,7 @@ test("metadata migrates v1 offline, preserves history and searches newest snapsh
 	const dbPath = join(data.directory, "metadata.sqlite");
 	await importKindleCollection(data.directory, dbPath);
 	const old = new DatabaseSync(dbPath);
-	old.exec(
-		"DROP VIEW latest_metadata; DROP TABLE metadata_snapshots; PRAGMA user_version = 1;",
-	);
+	legacySchema(old, 1);
 	old.close();
 	assert.equal(searchBooks("架空", 20, 0, dbPath).total, 2);
 	assert.equal(metadataSummary(dbPath).pending, 2);
@@ -290,9 +289,7 @@ test("invalid or unowned metadata does not migrate or alter database", async () 
 	const dbPath = join(data.directory, "rejected.sqlite");
 	await importKindleCollection(data.directory, dbPath);
 	const old = new DatabaseSync(dbPath);
-	old.exec(
-		"DROP VIEW latest_metadata; DROP TABLE metadata_snapshots; PRAGMA user_version = 1;",
-	);
+	legacySchema(old, 1);
 	old.close();
 	const before = await readFile(dbPath);
 	const filename = join(data.directory, "metadata.json");

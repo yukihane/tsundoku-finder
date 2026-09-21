@@ -134,6 +134,9 @@ pnpm dev library search "検索語"
 pnpm dev library search "書名 著者" --limit 10 --offset 0
 pnpm dev library search "" --publisher "出版社名"
 pnpm dev library get B000000001
+
+# BOOK☆WALKERの詳細取得（取得・取り込みCLIはまだ未実装）
+pnpm dev library get 00000000-0000-4000-8000-000000000001 --store bookwalker-jp
 ```
 
 ASINは実際の検索結果の`productId`に置き換えてください。書名・著者に加え、取り込み済みの最新書誌情報の書名・著者・出版社・紹介文・分類・シリーズ表示を部分一致検索します。空白区切りの語はすべて満たす必要があります。ASCII英字の大小は区別しません。全半角・表記揺れの吸収や意味検索は行いません。空文字列を指定すると一覧になります。`--publisher`は出版社の部分一致で絞り込み、出版社未取得の本は該当しません。

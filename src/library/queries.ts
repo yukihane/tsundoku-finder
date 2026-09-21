@@ -1,4 +1,5 @@
 import { libraryPath, readLibrary } from "./database.js";
+import { validateBookId } from "./ownership.js";
 
 const columns = `store, product_id AS productId, title, authors_text AS authorsText,
   acquired_date_text AS acquiredDateText, product_url AS productUrl, ownership,
@@ -25,7 +26,7 @@ export function searchBooks(
 	const terms = query.trim().split(/\s+/u).filter(Boolean);
 	return readLibrary(dbPath, (db) => {
 		const hasMetadata =
-			db.prepare("PRAGMA user_version").get()?.user_version === 2;
+			Number(db.prepare("PRAGMA user_version").get()?.user_version) >= 2;
 		const metadataMatch = hasMetadata
 			? ` OR EXISTS (SELECT 1 FROM latest_metadata m WHERE m.store = books.store AND m.product_id = books.product_id AND instr(lower(
       coalesce(json_extract(m.document, '$.title'), '') || char(10) ||
@@ -73,13 +74,17 @@ export function searchBooks(
 	});
 }
 
+export interface BookDetail extends Record<string, unknown> {
+	ownershipEvidence: (Record<string, unknown> & { details: unknown }) | null;
+	metadata: unknown;
+}
+
 export function getBook(
 	productId: string,
 	store = "kindle-jp",
 	dbPath = libraryPath,
-) {
-	if (store !== "kindle-jp" || !/^[A-Z0-9]{10}$/.test(productId))
-		throw new Error("Invalid book identifier");
+): BookDetail | null {
+	validateBookId(store, productId);
 	return readLibrary(dbPath, (db) => {
 		const book = db
 			.prepare(
@@ -87,15 +92,18 @@ export function getBook(
 			)
 			.get(store, productId);
 		if (!book) return null;
+		const version = Number(
+			db.prepare("PRAGMA user_version").get()?.user_version,
+		);
 		const evidence = db
 			.prepare(`SELECT e.source, e.captured_at AS capturedAt,
-      e.page_number AS pageNumber, e.category, e.filter, e.kind
+      e.page_number AS pageNumber, e.category, e.filter, e.kind${version >= 3 ? ", e.details" : ""}
       FROM ownership_evidence e JOIN books b ON b.latest_import_id = e.import_id
         AND b.store = e.store AND b.product_id = e.product_id
       WHERE b.store = ? AND b.product_id = ?`)
 			.get(store, productId);
 		const metadata =
-			db.prepare("PRAGMA user_version").get()?.user_version === 2
+			Number(db.prepare("PRAGMA user_version").get()?.user_version) >= 2
 				? db
 						.prepare(
 							"SELECT document FROM latest_metadata WHERE store = ? AND product_id = ?",
@@ -104,7 +112,15 @@ export function getBook(
 				: null;
 		return {
 			...book,
-			ownershipEvidence: evidence ?? null,
+			ownershipEvidence: evidence
+				? {
+						...evidence,
+						details:
+							typeof evidence.details === "string"
+								? (JSON.parse(evidence.details) as unknown)
+								: {},
+					}
+				: null,
 			metadata:
 				typeof metadata === "string" ? (JSON.parse(metadata) as unknown) : null,
 		};

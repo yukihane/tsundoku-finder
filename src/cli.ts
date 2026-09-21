@@ -18,7 +18,7 @@ if (
         pnpm dev library import-kindle <取得フォルダー>
         pnpm dev library summary
         pnpm dev library search "検索語" [--limit 1〜100] [--offset 0〜100000]
-        pnpm dev library get <ASIN>
+        pnpm dev library get <商品ID> [--store kindle-jp|bookwalker-jp]
 
 購入済み電子書籍から次の一冊を探すツールです。
 kindle login: 専用ブラウザでログインし、認証状態をローカルに保持します。
@@ -73,8 +73,12 @@ library searchは--publisher "出版社名"でも絞り込めます。
 		const value = args[2];
 		if (value === undefined) throw new Error("Missing argument");
 		if (args[1] === "get") {
-			if (args.length !== 3) throw new Error("Unexpected argument");
-			console.log(JSON.stringify({ book: getBook(value) }, null, 2));
+			if (
+				args.length !== 3 &&
+				!(args.length === 5 && args[3] === "--store" && args[4])
+			)
+				throw new Error("Unexpected argument");
+			console.log(JSON.stringify({ book: getBook(value, args[4]) }, null, 2));
 		} else {
 			let limit = 20;
 			let offset = 0;
