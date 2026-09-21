@@ -60,7 +60,15 @@ flowchart TD
 
 プロジェクトは単一パッケージ・ES Modules構成とし、TypeScriptのstrict設定で型検査する。Node.jsはpackage.jsonのdevEngines.runtimeでプロジェクト単位に固定し、pnpmが取得する。開発時の実行にはtsx、ビルド・型検査にはTypeScript、テストにはNode.js標準テストランナーを使用する。
 
-CLIはsrc/cli.tsを入口とし、ビルド結果はdist/に出力する。開発・検証手順は[README](../README.md)を参照する。Kindle取得・DB・MCPのライブラリは各機能の実装時に選定する。
+CLIはsrc/cli.tsを入口とし、ビルド結果はdist/に出力する。開発・検証手順は[README](../README.md)を参照する。DB・MCPのライブラリは各機能の実装時に選定する。
+
+### Kindle取得プロトタイプ
+
+- Amazon.co.jpのKindle for Web本棚を対象に、Playwrightで表示されたDOMから情報を取得する。
+- 専用Chromiumプロファイルでユーザーがログイン・追加認証を行い、認証状態を`.local/kindle/browser-profile/`に保持する。
+- 現段階では最大50件の少数取得とし、結果は`.local/kindle/samples/`のJSONへ保存する。DBへの同期は行わない。
+- 本棚への表示だけでは購入済みとみなさない。所有区分は未確認、全件取得は未完了と明示する。認識できるサンプルは除外する。
+- ASIN・書名・著者表示・バッジを抽出し、商品URLはASINから生成した値であることを記録する。
 
 ## 5. データ保護と開発ルール
 

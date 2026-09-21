@@ -147,3 +147,22 @@ Steamには `GetOwnedGames` APIがあり、公開状態などの条件に応じ�
 - [Node.jsの実行ファイル化](https://nodejs.org/download/release/latest-jod/docs/api/single-executable-applications.html)
 
 各ライブラリの採用バージョンとストアの具体的な取得方法は、実装時に確認・固定する。
+
+## 8. Kindle for Webの取得プロトタイプ
+
+調査日: 2026-09-22。Amazon.co.jpの実アカウントで手動ログイン後、表示DOMを調査した。以下はその時点の観測であり、公開APIや安定した仕様ではない。個別の書名・著者・認証情報は記録しない。
+
+出典: [Kindle for Web本棚](https://read.amazon.co.jp/kindle-library)（要ログイン）、[Playwrightの永続ブラウザコンテキスト](https://playwright.dev/docs/api/class-browsertype#browser-type-launch-persistent-context)。プロトタイプではPlaywright 1.63.0を使用。
+
+| 対象 | 観測結果と扱い |
+|---|---|
+| 書籍識別子 | `#cover`内の`library-item-option-{ASIN}`から取得できた |
+| 書名・著者 | `title-`、`author-`で始まるIDの要素に表示。著者は表示文字列として保持し、分割は行わない |
+| 商品URL | 本棚カードから商品リンクは確認できず。ASINから`https://www.amazon.co.jp/dp/{ASIN}`を生成した値として扱う。到達先は未検証 |
+| サンプル | `library-item-option-sample-main-`で始まる識別子と「サンプル」のバッジを確認。抽出対象から除外 |
+| 読み放題 | フィルターにKindle Unlimited・Prime Reading等を確認。通常カードの存在だけでは購入と判定できない |
+| 追加読み込み | `#library`のスクロール後にカード数が50から98へ増加。初期DOMは全件ではない |
+
+専用Chromiumでログインし、CLIから表示50件のうち10件をJSONへ保存する実行に成功した。10件すべてで書名・著者を取得できた。出力はGit対象外の`.local/`に保持する。自動テストでは架空HTMLを使用し、サンプル除外・重複排除・取得上限・所有未確認の保持・検索中やログイン画面の拒否を検証した。
+
+未確認: 全件取得の終了条件、購入・読み放題の確実な区別、長期的なログイン再利用、空本棚の判定。Amazonの利用条件ページは今回の調査ツールで取得できず、スクレイピングに関する条件の確認は未完了。技術的な取得成功は利用条件の確認完了を意味しない。
