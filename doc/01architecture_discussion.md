@@ -279,3 +279,23 @@ MCPホスト内のクライアントがMCPサーバーと通信する。AIアプ
 Steamには `GetOwnedGames` APIがあり、公開状態などの条件に応じて所有ゲーム一覧を取得できる。無料ゲームは既定で除外され、プレイした無料ゲームを含める指定がある。したがって、将来の取得方式をすべてスクレイピングに固定しない。APIキーの条件や実際のアカウントでの取得範囲は、Steam対応時に検証する。
 
 出典: [Steamworks IPlayerService / GetOwnedGames](https://partner.steamgames.com/doc/webapi/iplayerservice)。DLsite・DMMのゲーム取得方式は今回未調査。
+
+## 12. パッケージ管理ツールの比較
+
+調査日: 2026-09-22。pnpm採用後の比較検討。公式ドキュメントに基づく評価であり、本プロジェクトでの速度比較や依存ライブラリの動作検証は未実施。現在のpnpm採用方針は維持する。
+
+パッケージ管理と実行環境を分けて考える。pnpm・npm・Yarnは主に依存関係を管理する。Bunはパッケージ管理に加えて実行環境・テスト・バンドルなどを提供し、パッケージ管理だけをBunにして実行はNode.jsとする使い方もできる。pnpmによるNode.js管理も、アプリの実行環境をpnpm独自のものへ置き換えるわけではない。
+
+| 選択肢 | 相対的な利点 | 今回の留意点 |
+|---|---|---|
+| pnpm + Node.js | 依存ファイルの共有によるディスク効率、未宣言の依存へのアクセスを抑える標準構成。導入済みのpnpmを使える | 独自のリンク構造に対応しないツールには調整が必要な場合がある。採用ライブラリは実際に検証する |
+| npm + Node.js | 一般的なNode.jsインストーラーで同時導入でき、別のパッケージ管理ツールが不要 | pnpm導入済みの現環境では、その導入上の利点は小さい。Node.js管理は別途必要 |
+| Yarn + Node.js | Plug'n'Playによる依存解決や依存漏れ検出などを選べる。通常のnode_modules方式も利用可能 | PnPではツール側の対応・設定確認が必要。今回の小規模プロジェクトで積極的に切り替える理由は薄い |
+| Bunでパッケージ管理、Node.jsで実行 | 高速なインストールを目指す実装を利用できる | 速度差は環境・依存関係による。SQLite内蔵などのBun実行環境の利点は、この使い方だけでは得られない |
+| Bunでパッケージ管理と実行 | TypeScript実行、テスト、SQLite、実行ファイル化などをまとめて利用できる | Node.jsとの互換性は完全ではなく、Windows上のPlaywright・MCP・DBを組み合わせて確認する必要がある。Bun固有APIは実行環境への依存となる |
+
+今回の推奨はpnpm + Node.jsを継続すること。初期の主な不確実性はストア取得であり、パッケージ管理速度を最優先する要件はない。Bunを採用するなら、統合された開発・配布機能を使う目的を明確にし、依存関係の実動作を検証して判断する。Bunで実行ファイル化しても、Playwrightが操作するブラウザの配布・導入は別途考える必要がある。
+
+TypeScriptの実行機能と型検査は別であり、実行環境にかかわらず型検査の工程を設ける。バージョンとロックファイルを固定し、Windows上でインストール・ビルド・ブラウザ起動・MCP接続・DB操作を段階的に検証する。
+
+出典: [pnpmの設計上の特徴](https://pnpm.io/motivation)、[npmとNode.jsの導入](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm/)、[Yarn Plug'n'Play](https://yarnpkg.com/features/pnp)、[Bunのパッケージ管理](https://bun.com/docs/pm/cli/install)、[BunのNode.js互換性](https://bun.sh/docs/runtime/nodejs-compat)、[BunのTypeScript対応](https://bun.com/docs/runtime/typescript)、[BunのSQLite](https://bun.com/docs/runtime/sqlite)、[Bunの実行ファイル化](https://bun.com/docs/bundler/executables)。
