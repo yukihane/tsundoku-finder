@@ -11,6 +11,7 @@ import {
 	readLibrary,
 } from "../src/library/database.js";
 import { getBook, searchBooks } from "../src/library/queries.js";
+import { importMetadata, metadataSummary } from "../src/metadata/import.js";
 
 async function fixture(day = "22", ids = ["B000000001", "B000000002"]) {
 	const directory = await mkdtemp(join(tmpdir(), "tsundoku-import-"));
@@ -198,6 +199,135 @@ test("search and detail are bounded, literal and read-only", async () => {
 	const missing = join(data.directory, "missing.sqlite");
 	assert.throws(() => searchBooks("", 20, 0, missing));
 	await assert.rejects(access(missing));
+});
+
+test("metadata migrates v1 offline, preserves history and searches newest snapshot", async () => {
+	const data = await fixture();
+	const dbPath = join(data.directory, "metadata.sqlite");
+	await importKindleCollection(data.directory, dbPath);
+	const old = new DatabaseSync(dbPath);
+	old.exec(
+		"DROP VIEW latest_metadata; DROP TABLE metadata_snapshots; PRAGMA user_version = 1;",
+	);
+	old.close();
+	assert.equal(searchBooks("架空", 20, 0, dbPath).total, 2);
+	assert.equal(metadataSummary(dbPath).pending, 2);
+	const filename = join(data.directory, "metadata.json");
+	const snapshot = {
+		schemaVersion: 1,
+		scope: "kindle-metadata-sample",
+		store: "kindle-jp",
+		productId: "B000000001",
+		source: "https://www.amazon.co.jp/dp/B000000001",
+		capturedAt: "2026-09-22T00:00:00.000Z",
+		title: "書誌名",
+		authorsText: "著者 (著) 形式: Kindle版",
+		publisher: "試験出版",
+		description: "立体造形の解説",
+		publicationDateText: null,
+		categories: ["コンピュータ"],
+		series: null,
+		missingFields: ["series"],
+	};
+	await writeFile(filename, JSON.stringify(snapshot));
+	assert.deepEqual(await importMetadata(filename, dbPath), {
+		alreadyImported: false,
+	});
+	assert.deepEqual(await importMetadata(filename, dbPath), {
+		alreadyImported: true,
+	});
+	assert.equal(searchBooks("立体造形", 20, 0, dbPath).total, 1);
+	assert.deepEqual(
+		getBook("B000000001", "kindle-jp", dbPath)?.metadata,
+		snapshot,
+	);
+	assert.equal(searchBooks("コンピュータ", 20, 0, dbPath, "試験出版").total, 1);
+	assert.equal(searchBooks("", 20, 0, dbPath, "別出版").total, 0);
+	assert.equal(searchBooks("' OR 1=1 --", 20, 0, dbPath).total, 0);
+	assert.equal(searchBooks("", 1, 0, dbPath).books[0]?.title, "架空の本 22");
+	await writeFile(
+		filename,
+		JSON.stringify({
+			...snapshot,
+			capturedAt: "2026-09-21T00:00:00.000Z",
+			description: "古い説明",
+		}),
+	);
+	await importMetadata(filename, dbPath);
+	assert.equal(searchBooks("古い説明", 20, 0, dbPath).total, 0);
+	await writeFile(
+		filename,
+		JSON.stringify({ ...snapshot, description: "同時刻の競合" }),
+	);
+	await assert.rejects(importMetadata(filename, dbPath));
+	await writeFile(
+		filename,
+		JSON.stringify({
+			...snapshot,
+			capturedAt: "2026-09-23T00:00:00.000Z",
+			description: null,
+			missingFields: ["description", "series"],
+		}),
+	);
+	await importMetadata(filename, dbPath);
+	assert.equal(searchBooks("立体造形", 20, 0, dbPath).total, 0);
+	assert.equal(searchBooks("試験出版", 20, 0, dbPath).total, 1);
+	assert.deepEqual(metadataSummary(dbPath), {
+		total: 2,
+		captured: 1,
+		pending: 1,
+		snapshots: 3,
+	});
+	assert.deepEqual(librarySummary(dbPath), {
+		books: 2,
+		imports: 1,
+		evidence: 2,
+	});
+});
+
+test("invalid or unowned metadata does not migrate or alter database", async () => {
+	const data = await fixture();
+	const dbPath = join(data.directory, "rejected.sqlite");
+	await importKindleCollection(data.directory, dbPath);
+	const old = new DatabaseSync(dbPath);
+	old.exec(
+		"DROP VIEW latest_metadata; DROP TABLE metadata_snapshots; PRAGMA user_version = 1;",
+	);
+	old.close();
+	const before = await readFile(dbPath);
+	const filename = join(data.directory, "metadata.json");
+	const value = {
+		schemaVersion: 1,
+		scope: "kindle-metadata-sample",
+		store: "kindle-jp",
+		productId: "B999999999",
+		source: "https://www.amazon.co.jp/dp/B999999999",
+		capturedAt: "2026-09-22T00:00:00.000Z",
+		title: "架空",
+		authorsText: "著者 形式: Kindle版",
+		publisher: null,
+		description: null,
+		publicationDateText: null,
+		categories: [],
+		series: null,
+		missingFields: ["publisher", "description", "categories", "series"],
+	};
+	for (const input of [
+		value,
+		{ ...value, source: "https://example.com" },
+		{ ...value, missingFields: [] },
+		{ ...value, capturedAt: "invalid" },
+		{ ...value, categories: [1] },
+		{ ...value, schemaVersion: 2 },
+	]) {
+		await writeFile(filename, JSON.stringify(input));
+		await assert.rejects(importMetadata(filename, dbPath));
+		assert.deepEqual(await readFile(dbPath), before);
+	}
+	const missingDb = join(data.directory, "missing-db.sqlite");
+	await writeFile(filename, JSON.stringify(value));
+	await assert.rejects(importMetadata(filename, missingDb));
+	await assert.rejects(access(missingDb));
 });
 
 test("foreign database remains unchanged", async () => {

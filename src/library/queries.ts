@@ -9,9 +9,11 @@ export function searchBooks(
 	limit = 20,
 	offset = 0,
 	dbPath = libraryPath,
+	publisher = "",
 ) {
 	if (
 		query.length > 200 ||
+		publisher.length > 200 ||
 		!Number.isInteger(limit) ||
 		limit < 1 ||
 		limit > 100 ||
@@ -21,16 +23,36 @@ export function searchBooks(
 	)
 		throw new Error("Invalid search arguments");
 	const terms = query.trim().split(/\s+/u).filter(Boolean);
-	const where = terms.length
-		? terms
-				.map(
-					() =>
-						"(instr(lower(title), lower(?)) > 0 OR instr(lower(authors_text), lower(?)) > 0)",
-				)
-				.join(" AND ")
-		: "1";
-	const parameters = terms.flatMap((term) => [term, term]);
 	return readLibrary(dbPath, (db) => {
+		const hasMetadata =
+			db.prepare("PRAGMA user_version").get()?.user_version === 2;
+		const metadataMatch = hasMetadata
+			? ` OR EXISTS (SELECT 1 FROM latest_metadata m WHERE m.store = books.store AND m.product_id = books.product_id AND instr(lower(
+      coalesce(json_extract(m.document, '$.title'), '') || char(10) ||
+      coalesce(json_extract(m.document, '$.authorsText'), '') || char(10) ||
+      coalesce(json_extract(m.document, '$.publisher'), '') || char(10) ||
+      coalesce(json_extract(m.document, '$.description'), '') || char(10) ||
+      coalesce(json_extract(m.document, '$.series.text'), '') || char(10) ||
+      coalesce((SELECT group_concat(value, char(10)) FROM json_each(m.document, '$.categories')), '')
+    ), lower(?)) > 0)`
+			: "";
+		let where = terms.length
+			? terms
+					.map(
+						() =>
+							`(instr(lower(title), lower(?)) > 0 OR instr(lower(authors_text), lower(?)) > 0${metadataMatch})`,
+					)
+					.join(" AND ")
+			: "1";
+		const parameters = terms.flatMap((term) =>
+			hasMetadata ? [term, term, term] : [term, term],
+		);
+		if (publisher) {
+			where += hasMetadata
+				? " AND EXISTS (SELECT 1 FROM latest_metadata m WHERE m.store = books.store AND m.product_id = books.product_id AND instr(lower(json_extract(m.document, '$.publisher')), lower(?)) > 0)"
+				: " AND 0";
+			if (hasMetadata) parameters.push(publisher);
+		}
 		const total = Number(
 			db
 				.prepare(`SELECT count(*) AS count FROM books WHERE ${where}`)
@@ -72,6 +94,19 @@ export function getBook(
         AND b.store = e.store AND b.product_id = e.product_id
       WHERE b.store = ? AND b.product_id = ?`)
 			.get(store, productId);
-		return { ...book, ownershipEvidence: evidence ?? null };
+		const metadata =
+			db.prepare("PRAGMA user_version").get()?.user_version === 2
+				? db
+						.prepare(
+							"SELECT document FROM latest_metadata WHERE store = ? AND product_id = ?",
+						)
+						.get(store, productId)?.document
+				: null;
+		return {
+			...book,
+			ownershipEvidence: evidence ?? null,
+			metadata:
+				typeof metadata === "string" ? (JSON.parse(metadata) as unknown) : null,
+		};
 	});
 }

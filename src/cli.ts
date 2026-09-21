@@ -11,6 +11,8 @@ if (
         pnpm dev kindle sample [--limit 1〜50]
         pnpm dev kindle reading-sample [--limit 1〜25]
         pnpm dev metadata kindle <所有ASIN>
+        pnpm dev metadata import <保存済みJSON>
+        pnpm dev metadata summary
         pnpm dev kindle purchases [--limit 1〜25]
         pnpm dev kindle purchases --all [--max-pages 1〜1000]
         pnpm dev library import-kindle <取得フォルダー>
@@ -25,7 +27,28 @@ kindle purchases: 購入済み一覧の先頭ページから最大10件（変更
 --all: ページごとに保存して全件取得します。上限到達・失敗は未完了として終了します。
 library import-kindle: 完了済みの取得JSONをローカルSQLiteへ取り込みます。
 library summary: DBの書籍数・取り込み数を表示します。
-書誌情報の少数取得に対応しています。情報補完のDB保存は未実装です。MCPの導入は保留しています。`);
+library searchは--publisher "出版社名"でも絞り込めます。
+書誌情報の保存・検索に対応しています。読書状態のDB保存は未実装です。MCPの導入は保留しています。`);
+} else if (
+	args[0] === "metadata" &&
+	((args.length === 3 && args[1] === "import" && args[2]) ||
+		(args.length === 2 && args[1] === "summary"))
+) {
+	try {
+		const { importMetadata, metadataSummary } = await import(
+			"./metadata/import.js"
+		);
+		const result =
+			args[1] === "summary"
+				? metadataSummary()
+				: await importMetadata(args[2] ?? "");
+		console.log(JSON.stringify(result, null, 2));
+	} catch {
+		console.error(
+			"書誌情報の処理に失敗しました。保存済みJSON・所有情報・DBを確認してください。取り込みの変更は確定していません。",
+		);
+		process.exitCode = 1;
+	}
 } else if (
 	args.length === 3 &&
 	args[0] === "metadata" &&
@@ -55,21 +78,29 @@ library summary: DBの書籍数・取り込み数を表示します。
 		} else {
 			let limit = 20;
 			let offset = 0;
+			let publisher = "";
 			const seen = new Set<string>();
 			for (let i = 3; i < args.length; i += 2) {
 				const key = args[i] ?? "";
 				const number = args[i + 1] ?? "";
 				if (
-					!["--limit", "--offset"].includes(key) ||
+					!["--limit", "--offset", "--publisher"].includes(key) ||
 					seen.has(key) ||
-					!/^\d+$/.test(number)
+					(key === "--publisher" ? !number.trim() : !/^\d+$/.test(number))
 				)
 					throw new Error("Invalid option");
 				seen.add(key);
-				if (key === "--limit") limit = Number(number);
+				if (key === "--publisher") publisher = number;
+				else if (key === "--limit") limit = Number(number);
 				else offset = Number(number);
 			}
-			console.log(JSON.stringify(searchBooks(value, limit, offset), null, 2));
+			console.log(
+				JSON.stringify(
+					searchBooks(value, limit, offset, undefined, publisher),
+					null,
+					2,
+				),
+			);
 		}
 	} catch {
 		console.error(

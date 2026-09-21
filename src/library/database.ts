@@ -9,10 +9,23 @@ export const libraryPath = fileURLToPath(
 );
 const applicationId = 0x54534e44;
 
-function initialize(db: DatabaseSync): void {
+export function initialize(db: DatabaseSync): void {
 	const version = db.prepare("PRAGMA user_version").get()?.user_version;
 	const app = db.prepare("PRAGMA application_id").get()?.application_id;
-	if (version === 1 && app === applicationId) return;
+	if (version === 2 && app === applicationId) return;
+	if (version === 1 && app === applicationId) {
+		db.exec(`CREATE TABLE metadata_snapshots (
+      id TEXT PRIMARY KEY, store TEXT NOT NULL, product_id TEXT NOT NULL,
+      captured_at TEXT NOT NULL, document TEXT NOT NULL CHECK(json_valid(document)),
+      UNIQUE(store, product_id, captured_at),
+      FOREIGN KEY(store, product_id) REFERENCES books(store, product_id)
+    ) STRICT;
+    CREATE VIEW latest_metadata AS SELECT m.* FROM metadata_snapshots m
+      WHERE NOT EXISTS (SELECT 1 FROM metadata_snapshots newer
+        WHERE newer.store = m.store AND newer.product_id = m.product_id AND newer.captured_at > m.captured_at);
+    PRAGMA user_version = 2;`);
+		return;
+	}
 	if (
 		version !== 0 ||
 		app !== 0 ||
@@ -43,6 +56,7 @@ function initialize(db: DatabaseSync): void {
     PRAGMA application_id = ${applicationId};
     PRAGMA user_version = 1;
   `);
+	initialize(db);
 }
 
 function storeImport(db: DatabaseSync, input: KindleImport) {
@@ -132,7 +146,9 @@ export function readLibrary<T>(
 		if (
 			db.prepare("PRAGMA application_id").get()?.application_id !==
 				applicationId ||
-			db.prepare("PRAGMA user_version").get()?.user_version !== 1
+			![1, 2].includes(
+				Number(db.prepare("PRAGMA user_version").get()?.user_version),
+			)
 		)
 			throw new Error("Unsupported database");
 		return read(db);
