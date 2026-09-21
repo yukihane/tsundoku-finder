@@ -126,6 +126,7 @@ formatter・linterはBiomeに統一し、標準の整形設定・推奨lintル�
 - 件数の既定は20件。ストア・商品IDの順で安定して並べ、総件数・次のoffsetとともにJSONを返す。検索文字列は最大200文字で、SQLパラメーターとして渡す。`%`や`_`をワイルドカードとして解釈しない。
 - `library get <ASIN>`でKindleの書籍詳細・最新の所有確認根拠・最新の補完情報をJSONで返す。未登録の場合は`book: null`、補完情報がない場合は`metadata: null`とする。
 - CLIから独立した検索モジュールを設ける。接続は読み取り専用とし、DBがない場合は新規作成せず失敗する。
+- AND・ORを組み合わせる検索CLIの拡張はTODOとして後回しにし、DB整備を優先する。現行の検索機能は維持する。
 - MCPは必要性を再検討した結果、導入を保留する。まずSQLite＋CLIで実際の検索を試し、接続先の要件が明らかになってから追加を判断する。
 
 ### 書誌情報の少数取得プロトタイプ
@@ -152,14 +153,67 @@ formatter・linterはBiomeに統一し、標準の整形設定・推奨lintル�
 - スキーマv1からv2への移行と保存を同一トランザクションで行い、失敗時は移行も取り消す。検索はv1の読み取りも可能であり、読み取り時に移行しない。
 - `metadata summary`は全所有冊数（total）、書誌情報を取り込み済みの冊数（captured）、未取り込み冊数（pending）、保存した履歴数（snapshots）を返す。capturedは全項目の補完完了を意味せず、欠損は各文書のmissingFieldsで確認する。
 
-## 5. データ保護と開発ルール
+## 5. DBの保存項目とテーブル構成
+
+書誌情報の保存項目とテーブル構成は、以下のスキーマv2を当面の基本とする。取得値を使った検索補助を目的とし、既存実装を維持する。今回の確定に伴うDB移行は不要。
+
+### DBのテーブル構成
+
+| テーブル | キー・関連 | 保存する内容 |
+|---|---|---|
+| books | 主キー(store, product_id)。latest_import_idはimportsを参照 | 所有する商品の基本情報 |
+| imports | 主キーid（取得ファイル一式のSHA-256） | 購入済み一覧の取り込み履歴 |
+| ownership_evidence | 主キー(import_id, store, product_id)。importsとbooksを参照 | 商品ごとの所有確認根拠 |
+| metadata_snapshots | 主キーid（検証後の書誌文書のSHA-256）。(store, product_id, captured_at)は一意。booksを参照 | 公開商品情報の取得履歴と取得値のJSON |
+
+`latest_metadata`は、商品ごとに取得日時が最新のmetadata_snapshotsを選ぶビューとする。別の実体テーブルに最新値を複製しない。4テーブルはSTRICTとし、書き込み接続で外部キーを有効にする。
+
+### 通常のカラムとして保持する項目
+
+| テーブル | カラム（キーを含む） |
+|---|---|
+| books | store, product_id, title, authors_text, acquired_date_text, product_url, ownership, first_seen_at, last_seen_at, latest_import_id |
+| imports | id, source_store, started_at, completed_at, imported_at, book_count |
+| ownership_evidence | import_id, store, product_id, page_number, source, captured_at, category, filter, kind |
+| metadata_snapshots | id, store, product_id, captured_at, document |
+
+book_count・page_numberはINTEGER、その他はTEXTで、いずれもNOT NULL。ownershipは現在purchasedのみを許可する。documentはjson_valid制約付きTEXT。その他の必須項目や形式の詳細は取り込み時の検証で保証する。取得日時はUTCのISO 8601文字列とし、商品画面に表示された購入日・発売日の文字列とは区別する。
+
+### 書誌JSON内に保持する項目
+
+出版社・紹介文等はmetadata_snapshots.document内に保持する。当面は専用カラム・著者マスター・分類マスター・シリーズテーブルへ展開しない。SQLiteからはJSON関数で参照でき、検索のためだけに保存値を重複させない。
+
+| JSON項目 | 型・欠損 | 意味 |
+|---|---|---|
+| schemaVersion, scope | 数値1、kindle-metadata-sample | 保存形式の識別。DBスキーマのバージョンとは別 |
+| store, productId | 文字列・必須 | 対象のストア商品。テーブル側と同じ値で保存 |
+| source, capturedAt | 文字列・必須 | 対象商品URL、取得日時 |
+| title, authorsText | 文字列・必須 | 商品ページの書名・著者欄。形式表示や役割などの混在を許容 |
+| publisher | 文字列またはnull | 出版社表示。レーベルや法人名の同一性は整理しない |
+| publicationDateText | 文字列またはnull | 発売日の表示文字列 |
+| description | 文字列またはnull | 紹介文。本文の取得・要約はしない |
+| categories | 文字列配列、欠損は空配列 | ストア分類の表示順を保持。独自分類へ置換しない |
+| series | {text, url}またはnull | シリーズ表示とストア内URL。巻数・読む順序は別途数値化しない |
+| missingFields | 文字列配列 | publisher・description・categories・seriesの欠損一覧。全項目の充足や欠損原因を表すものではない |
+
+「取得値」は既存抽出処理で空白・方向制御文字を整理した値を指し、生HTMLの保存ではない。documentは取り込み検証後の項目で構成するため、未定義の追加項目を自動保存する形式ではない。項目を追加するときは抽出・JSON検証・読み取り側の対応を合わせて行う。
+
+### 採用値と更新のルール
+
+- 所有一覧の書名・著者等はbooks、商品ページの書名・著者等はdocumentにそれぞれ残す。補完でbooksを書き換えず、現行の検索は両方を対象とする。
+- 書誌の検索対象は最新の文書一式。過去の履歴を残し、欠損を過去の値から自動で補充しない。欠損は不明であり、非該当・全年齢・シリーズなし等とみなさない。
+- 同一文書の取り込みは変更なし。同じ商品・取得日時で異なる文書は拒否し、時刻が古い文書は履歴としてのみ追加する。
+- 商品ページの取得失敗では新しい文書を作らず、保存済みの所有情報・書誌履歴を保持する。
+- 手動補正、人物統合、独自分類、巻順の正規化、読書状態、ISBN対応、検索用ベクトルのテーブルは当面追加しない。具体的な必要性を確認してから拡張する。
+
+## 6. データ保護と開発ルール
 
 - 認証情報、ブラウザのセッション、実際の蔵書DB、個人情報を含む取得データをGitへ登録しない。
 - テストには架空データまたは個人情報を除去したデータを使う。
 - 同期で取得できなかったことだけを理由に既存の所有情報を削除しない。
 - 実装・検証・コミットは[AGENTS.md](../AGENTS.md)の作業ルールに従う。
 
-## 6. 将来のゲーム版との関係
+## 7. 将来のゲーム版との関係
 
 - ゲーム版は別システム・別DBとする。書籍版とデータやMCPを統合する前提にしない。
 - 「所有情報の同期」「説明情報の補完」「MCPによる検索」という枠組みを再利用する。
