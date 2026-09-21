@@ -354,3 +354,37 @@ DOMでは各商品の`.digital_entity_details`内に`content-read-badge`が表�
 同日、ユーザーはOR検索の実装をTODOへ移し、DBの保存項目・テーブル構成の確定を優先した。既存コードとDBを読み取り専用で確認したところ、所有4,769件、書誌文書27件で、保存済みJSON27件はすべて取り込み済みだった。不正JSON・外部キー違反は0件、SQLiteのintegrity_checkはok。27件すべてに書名・著者表示・出版社・発売日表示・紹介文・分類があり、シリーズは24件に存在した。これは保存状況の確認であり、書誌内容の正確性を保証するものではない。
 
 確認前後のDBハッシュは一致。検証スクリプトと集計結果はGit対象外の`.local/audit-metadata-storage.mjs`、`.local/metadata-storage-audit.json`に保存した。現行実装の4テーブルとlatest_metadataビューで決定済みの保存方針を満たすため、設計書に保存項目・JSON内の項目・採用値・更新ルールを明記した。今回コード変更・DB移行・追加取得は行っていない。
+
+## 17. 他ストア対応の拡張性調査
+
+調査日: 2026-09-22。対象は現行リポジトリの構造と動作。BOOK☆WALKER・DMM・O'Reillyの実サイト、API、取得可能項目は今回は調査しておらず、以下から取得可否は判断できない。実装・実蔵書DBは変更していない。
+
+**結論: DBの識別方法と検索の土台は再利用できるが、現状のアプリケーションはKindle専用。他ストアの取得処理を追加するだけでは対応できない。** 前節で確定したスキーマv2は現行Kindle用途の基本として妥当だが、他ストアでも無変更で足りると確認したものではない。
+
+| 領域 | 確認した状態 | 他ストア追加時の対応 |
+|---|---|---|
+| 商品の識別 | booksは(store, product_id)主キー。DBのproduct_idはTEXTでASIN制約なし。書誌・所有根拠もストアと商品IDで関連付く | この方式を維持。同じIDが別ストアにあっても共存できる。同一作品の自動統合は不要 |
+| 所有情報の保存 | library/database.tsがKindleImportとreadKindleImportを直接import。書き込みにkindle-jp、本、購入済み、amazon-content-filterが固定 | ストア別の検証・変換と、検証済み共通データを保存する処理を分ける。共通の名前に変更するだけでは不十分 |
+| 取得JSONの検証 | KindleのURL・ASIN・25件単位のページ数・範囲・完了済み全件取得を検証 | Kindleの検証は維持。他ストアに同じファイル形式や25件単位を強制せず、固有の完了条件と所有根拠を検証して共通形へ変換する |
+| 書誌情報 | JSON保存・履歴・外部キー・トランザクションは再利用可能。一方validateMetadataはscope、kindle-jp、10桁ID、Amazonの商品・シリーズURL、著者欄のKindle版表記を要求 | 共通項目の検証と商品同定のストア固有検証を分離。既存Kindle JSONは引き続き読めるようにする。未知の項目は現行検証で捨てられるため、JSONなら何でも自動保存されるわけではない |
+| 検索 | searchBooksはストアを固定せず、補完情報も(store, product_id)で照合する | 共通のJSON項目名・型を揃えれば横断検索を再利用可能。ストア絞り込みは現状なし |
+| 詳細取得・CLI | getBookはkindle-jp以外とASIN以外を拒否。CLIのgetはASIN一つしか受け取らない | ストアと商品IDを指定できる入口が必要。ID検証はストアごとに行う。検索結果に他ストアが出ても現状のgetでは取得できない |
+| ページ収集・ブラウザ | collectPurchasePagesは処理をコールバックで受け取るが、asin・25件単位・総数固定を前提にする。認証プロファイル・URLはKindle固定 | 中断・途中保存の考え方は再利用可能。ページ送り・APIカーソル等は対象に合わせる。認証状態と取得ファイルはストアごとに分ける |
+| 所有根拠の形 | ownership_evidenceのpage_number・category・filterはNOT NULL。booksのacquired_date_textもNOT NULLで、Kindle入力では非空を要求 | 次ストアで取得できる項目を確認する。購入日や画面フィルターがない場合、偽の値で埋めずnullable化や根拠の追加JSON等を検討。必要ならDB移行が生じる |
+| 利用権・アカウント | ownershipはpurchasedのみ。アカウント識別カラムはない | 他ストアの購入所有には適合し得るが、定額利用・レンタル等は現状対象外。同一ストアの複数アカウントも未対応。必要性を確認して拡張する |
+| 複数の書誌情報源 | latest_metadataは商品ごとの最新文書一式を採用。同時刻の異なる文書は競合扱い | ストアごとの商品情報には再利用可能。将来、出版社・書誌API等を併用する場合の情報源間の合成は別途設計が必要 |
+
+### 隔離DBでの動作確認
+
+架空のkindle-jpとfictional-storeの商品を、実データとは別の新規SQLiteへSQLで投入した。これはDB・検索の許容範囲を検証するための操作であり、正式な他ストア取り込みに成功したことを意味しない。
+
+- 同じ商品IDを2ストアで保持でき、ASINより長い商品IDもDBへ保存できた。
+- 横断検索、架空ストアの紹介文検索、出版社フィルターが動作した。
+- 同じ架空ストアの商品をgetBookへ渡すと拒否された。書誌文書もvalidateMetadataで拒否された。
+- 購入日をNULLにする操作、ownershipをsubscriptionにする操作はDB制約で拒否された。
+
+検証スクリプトは`.local/check-store-extensibility.mjs`、隔離DB・結果は`.local/store-probe-*/`に保存し、Git対象外。アプリのソース変更・全体テストの追加は行っていない。
+
+コード上の根拠: [DB定義と取り込み](../src/library/database.ts)、[Kindle入力検証](../src/kindle/import-data.ts)、[書誌入力検証](../src/metadata/import.ts)、[検索と詳細取得](../src/library/queries.ts)、[CLI](../src/cli.ts)、[ページ収集](../src/kindle/collection.ts)、[認証ブラウザ](../src/kindle/browser.ts)。
+
+推奨する最小変更は「ストア別取得・検証 → 共通の所有情報／書誌情報 → 共通DB保存」という境界の整理。プラグインSDKや厳密な著者・作品の統合は必要ない。次に対応するストアの少数サンプルで欠損項目と所有根拠を確認してから、共通型と必要なスキーマ変更を具体化する。
