@@ -9,6 +9,7 @@ if (
 使い方: pnpm dev
         pnpm dev kindle login
         pnpm dev kindle sample [--limit 1〜50]
+        pnpm dev kindle reading-sample [--limit 1〜25]
         pnpm dev kindle purchases [--limit 1〜25]
         pnpm dev kindle purchases --all [--max-pages 1〜1000]
         pnpm dev library import-kindle <取得フォルダー>
@@ -126,9 +127,11 @@ library summary: DBの書籍数・取り込み数を表示します。
 	}
 } else if (
 	args[0] === "kindle" &&
-	(args[1] === "sample" || args[1] === "purchases")
+	(args[1] === "sample" ||
+		args[1] === "purchases" ||
+		args[1] === "reading-sample")
 ) {
-	const maximum = args[1] === "purchases" ? 25 : 50;
+	const maximum = args[1] === "sample" ? 50 : 25;
 	const validArgs =
 		args.length === 2 ||
 		(args.length === 4 && args[2] === "--limit" && /^\d+$/.test(args[3] ?? ""));
@@ -140,11 +143,11 @@ library summary: DBの書籍数・取り込み数を表示します。
 		process.exitCode = 1;
 	} else {
 		try {
-			if (args[1] === "purchases") {
+			if (args[1] !== "sample") {
 				const { capturePurchasedSample } = await import(
 					"./kindle/purchases.js"
 				);
-				await capturePurchasedSample(limit);
+				await capturePurchasedSample(limit, args[1] === "reading-sample");
 			} else {
 				const { captureKindleSample } = await import("./kindle/sample.js");
 				await captureKindleSample(limit);

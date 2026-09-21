@@ -81,6 +81,18 @@ pnpm dev kindle sample --limit 10
 
 ## 蔵書DBへの取り込み
 
+### 既読表示の少数検証
+
+```powershell
+pnpm dev kindle reading-sample --limit 10
+```
+
+購入済み一覧の先頭ページから最大25件（既定10件）の既読表示を観測し、`.local/kindle/reading-samples/`へJSONを保存します。専用ブラウザのログイン状態を再利用します。
+
+商品ID・出典・取得日時とともに、明示的な「読んだ本」表示があれば`kindleReadState: "read"`、それ以外は`"unknown"`を保存します。表示がないことを未読・未着手の証拠にはしません。読書状態の変更、本文の表示、全件取得、DB更新は行いません。このJSONは`library import-kindle`の対象ではありません。
+
+### 購入済み一覧の取り込み
+
 ```powershell
 pnpm dev library import-kindle .local/kindle/collections/<実行ID>
 pnpm dev library summary

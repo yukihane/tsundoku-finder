@@ -121,7 +121,10 @@ export async function readPurchasePage(
 	};
 }
 
-export async function capturePurchasedSample(limit: number): Promise<void> {
+export async function capturePurchasedSample(
+	limit: number,
+	reading = false,
+): Promise<void> {
 	validatePurchaseLimit(limit);
 	await mkdir(kindleProfilePath, { recursive: true });
 	const context = await chromium.launchPersistentContext(kindleProfilePath, {
@@ -164,9 +167,12 @@ export async function capturePurchasedSample(limit: number): Promise<void> {
 			undefined,
 			{ timeout: 30_000 },
 		);
-		const report = await readPurchasePage(page, limit);
+		const report = reading
+			? await (await import("./reading.js")).readReadingSample(page, limit)
+			: await readPurchasePage(page, limit);
+		const folder = reading ? "reading-samples" : "purchases";
 		const directory = fileURLToPath(
-			new URL("../../.local/kindle/purchases/", import.meta.url),
+			new URL(`../../.local/kindle/${folder}/`, import.meta.url),
 		);
 		await mkdir(directory, { recursive: true });
 		const filename = `${report.capturedAt.replace(/[:.]/g, "-")}-${randomUUID()}.json`;
@@ -176,10 +182,12 @@ export async function capturePurchasedSample(limit: number): Promise<void> {
 			{ flag: "wx" },
 		);
 		console.log(
-			`${report.books.length}件を .local/kindle/purchases/${filename} に保存しました。`,
+			`${report.books.length}件を .local/kindle/${folder}/${filename} に保存しました。`,
 		);
 		console.log(
-			"Amazonの購入済み分類を根拠とします。有料購入の確認・全件取得は行っていません。",
+			reading
+				? "既読表示のみを観測しました。表示なしは不明とし、未着手・読書中の判定やDB更新は行いません。"
+				: "Amazonの購入済み分類を根拠とします。有料購入の確認・全件取得は行っていません。",
 		);
 	} finally {
 		process.removeListener("SIGINT", closeOnSignal);
