@@ -280,7 +280,7 @@ Steamには `GetOwnedGames` APIがあり、公開状態などの条件に応じ�
 
 出典: [Steamworks IPlayerService / GetOwnedGames](https://partner.steamgames.com/doc/webapi/iplayerservice)。DLsite・DMMのゲーム取得方式は今回未調査。
 
-## 12. パッケージ管理ツールの比較
+## 12. パッケージ管理ツール・実行環境の比較
 
 調査日: 2026-09-22。pnpm採用後の比較検討。公式ドキュメントに基づく評価であり、本プロジェクトでの速度比較や依存ライブラリの動作検証は未実施。現在のpnpm採用方針は維持する。
 
@@ -299,3 +299,17 @@ Steamには `GetOwnedGames` APIがあり、公開状態などの条件に応じ�
 TypeScriptの実行機能と型検査は別であり、実行環境にかかわらず型検査の工程を設ける。バージョンとロックファイルを固定し、Windows上でインストール・ビルド・ブラウザ起動・MCP接続・DB操作を段階的に検証する。
 
 出典: [pnpmの設計上の特徴](https://pnpm.io/motivation)、[npmとNode.jsの導入](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm/)、[Yarn Plug'n'Play](https://yarnpkg.com/features/pnp)、[Bunのパッケージ管理](https://bun.com/docs/pm/cli/install)、[BunのNode.js互換性](https://bun.sh/docs/runtime/nodejs-compat)、[BunのTypeScript対応](https://bun.com/docs/runtime/typescript)、[BunのSQLite](https://bun.com/docs/runtime/sqlite)、[Bunの実行ファイル化](https://bun.com/docs/bundler/executables)。
+
+### 追加候補: Deno
+
+調査日: 2026-09-22。Node.jsの作者Ryan Dahlが始めたDenoも比較候補になる。pnpm単体との比較ではなく、Node.jsと開発ツール群を含めた構成との比較となる。公式資料の確認のみで、Windows上の本プロジェクトの依存関係による実動作検証は未実施。
+
+- **利点**: TypeScript実行、型検査、テスト、フォーマット、lint、依存管理などを統合できる。ファイル・ネットワーク等へのアクセス許可を設定でき、`deno compile` による実行ファイル配布も可能。
+- **既存資産**: npmパッケージやpackage.jsonに対応し、Node.js互換APIを提供する。SQLiteは `node:sqlite` が利用候補になる。MCPもTypeScript SDKを使う構成を検証でき、既存の3責務の分離は変わらない。
+- **確認点**: Node.js互換性には一部APIやネイティブアドオン等の条件がある。WindowsでPlaywrightのブラウザ起動・認証状態の保存、MCPのstdio通信、SQLiteの読み書きを確認する。過去の特定OSでの対応状況だけで現在の可否を断定しない。
+- **権限の注意点**: ブラウザ操作には子プロセス起動などの許可が必要になる。Denoから起動した外部プロセスを同じ権限モデルで制限できるわけではなく、権限機構だけをもって認証情報等が完全に保護されるとは扱わない。
+- **配布の注意点**: 実行ファイル化しても、Playwright用ブラウザの導入・配布は別途必要。実行ファイル化自体も採用依存関係で検証する。
+
+Denoは「開発ツールをまとめたい」「権限を明示したい」という目的がある場合に有力。今回の推薦は引き続きpnpm + Node.jsだが、Denoが機能不足で候補外という意味ではない。Denoを選ぶ場合は実行環境・依存管理・開発コマンドの方針を改めて決定し、AGENTS.md等も合わせて更新する。今回の調査だけでは採用方針を変更しない。
+
+出典: [Denoの設立について](https://deno.com/blog/the-deno-company)、[Deno概要](https://docs.deno.com/runtime/)、[Node.js・npm互換性](https://docs.deno.com/runtime/fundamentals/node/)、[権限モデル](https://docs.deno.com/runtime/fundamentals/security/)、[SQLite API](https://docs.deno.com/api/node/sqlite/)、[実行ファイル化](https://docs.deno.com/examples/deno_compile/)。
