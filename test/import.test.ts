@@ -8,7 +8,9 @@ import { purchasesUrl } from "../src/kindle/purchases.js";
 import {
 	importKindleCollection,
 	librarySummary,
+	readLibrary,
 } from "../src/library/database.js";
+import { getBook, searchBooks } from "../src/library/queries.js";
 
 async function fixture(day = "22", ids = ["B000000001", "B000000002"]) {
 	const directory = await mkdtemp(join(tmpdir(), "tsundoku-import-"));
@@ -161,6 +163,41 @@ test("SQL failure rolls back books, import record and evidence together", async 
 	} finally {
 		check.close();
 	}
+});
+
+test("search and detail are bounded, literal and read-only", async () => {
+	const data = await fixture();
+	const dbPath = join(data.directory, "search.sqlite");
+	await importKindleCollection(data.directory, dbPath);
+	const before = await readFile(dbPath);
+	const first = searchBooks("架空 QUOTED", 1, 0, dbPath);
+	assert.equal(first.total, 2);
+	assert.equal(first.books[0]?.productId, "B000000001");
+	assert.equal(first.nextOffset, 1);
+	const second = searchBooks("架空 QUOTED", 1, 1, dbPath);
+	assert.equal(second.books[0]?.productId, "B000000002");
+	assert.equal(second.nextOffset, null);
+	assert.equal(searchBooks("", 20, 0, dbPath).total, 2);
+	for (const term of ["%", "_", "' OR 1=1 --", "存在しない"]) {
+		assert.equal(searchBooks(term, 20, 0, dbPath).total, 0);
+	}
+	assert.equal(searchBooks("'quoted'", 20, 0, dbPath).total, 2);
+	assert.equal(searchBooks("", 20, 10, dbPath).books.length, 0);
+	assert.equal(
+		getBook("B000000001", "kindle-jp", dbPath)?.ownershipEvidence?.filter,
+		"購入済み",
+	);
+	assert.equal(getBook("B999999999", "kindle-jp", dbPath), null);
+	assert.throws(() => searchBooks("", 101, 0, dbPath));
+	assert.throws(() => searchBooks("", 1, -1, dbPath));
+	assert.throws(() => getBook("invalid", "kindle-jp", dbPath));
+	assert.throws(() =>
+		readLibrary(dbPath, (db) => db.exec("DELETE FROM books")),
+	);
+	assert.deepEqual(await readFile(dbPath), before);
+	const missing = join(data.directory, "missing.sqlite");
+	assert.throws(() => searchBooks("", 20, 0, missing));
+	await assert.rejects(access(missing));
 });
 
 test("foreign database remains unchanged", async () => {

@@ -13,6 +13,8 @@ if (
         pnpm dev kindle purchases --all [--max-pages 1〜1000]
         pnpm dev library import-kindle <取得フォルダー>
         pnpm dev library summary
+        pnpm dev library search "検索語" [--limit 1〜100] [--offset 0〜100000]
+        pnpm dev library get <ASIN>
 
 購入済み電子書籍から次の一冊を探すツールです。
 kindle login: 専用ブラウザでログインし、認証状態をローカルに保持します。
@@ -21,7 +23,43 @@ kindle purchases: 購入済み一覧の先頭ページから最大10件（変更
 --all: ページごとに保存して全件取得します。上限到達・失敗は未完了として終了します。
 library import-kindle: 完了済みの取得JSONをローカルSQLiteへ取り込みます。
 library summary: DBの書籍数・取り込み数を表示します。
-情報補完・MCPは未実装です。`);
+情報補完は未実装です。MCPの導入は保留しています。`);
+} else if (
+	args[0] === "library" &&
+	(args[1] === "search" || args[1] === "get")
+) {
+	try {
+		const { searchBooks, getBook } = await import("./library/queries.js");
+		const value = args[2];
+		if (value === undefined) throw new Error("Missing argument");
+		if (args[1] === "get") {
+			if (args.length !== 3) throw new Error("Unexpected argument");
+			console.log(JSON.stringify({ book: getBook(value) }, null, 2));
+		} else {
+			let limit = 20;
+			let offset = 0;
+			const seen = new Set<string>();
+			for (let i = 3; i < args.length; i += 2) {
+				const key = args[i] ?? "";
+				const number = args[i + 1] ?? "";
+				if (
+					!["--limit", "--offset"].includes(key) ||
+					seen.has(key) ||
+					!/^\d+$/.test(number)
+				)
+					throw new Error("Invalid option");
+				seen.add(key);
+				if (key === "--limit") limit = Number(number);
+				else offset = Number(number);
+			}
+			console.log(JSON.stringify(searchBooks(value, limit, offset), null, 2));
+		}
+	} catch {
+		console.error(
+			"検索・詳細取得に失敗しました。引数と蔵書DBの取り込み・アクセス状態を確認してください。",
+		);
+		process.exitCode = 1;
+	}
 } else if (
 	args.length === 3 &&
 	args[0] === "library" &&

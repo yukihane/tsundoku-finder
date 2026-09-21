@@ -123,7 +123,10 @@ export async function importKindleCollection(
 	}
 }
 
-export function librarySummary(dbPath = libraryPath) {
+export function readLibrary<T>(
+	dbPath: string,
+	read: (db: DatabaseSync) => T,
+): T {
 	const db = new DatabaseSync(dbPath, { readOnly: true });
 	try {
 		if (
@@ -132,19 +135,23 @@ export function librarySummary(dbPath = libraryPath) {
 			db.prepare("PRAGMA user_version").get()?.user_version !== 1
 		)
 			throw new Error("Unsupported database");
-		return {
-			books: Number(
-				db.prepare("SELECT count(*) AS count FROM books").get()?.count,
-			),
-			imports: Number(
-				db.prepare("SELECT count(*) AS count FROM imports").get()?.count,
-			),
-			evidence: Number(
-				db.prepare("SELECT count(*) AS count FROM ownership_evidence").get()
-					?.count,
-			),
-		};
+		return read(db);
 	} finally {
 		db.close();
 	}
+}
+
+export function librarySummary(dbPath = libraryPath) {
+	return readLibrary(dbPath, (db) => ({
+		books: Number(
+			db.prepare("SELECT count(*) AS count FROM books").get()?.count,
+		),
+		imports: Number(
+			db.prepare("SELECT count(*) AS count FROM imports").get()?.count,
+		),
+		evidence: Number(
+			db.prepare("SELECT count(*) AS count FROM ownership_evidence").get()
+				?.count,
+		),
+	}));
 }

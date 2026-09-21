@@ -1,8 +1,8 @@
 # tsundoku-finder
 
-購入済み電子書籍をまとめ、既存AIからMCP経由で次に読む本を探すプロジェクトです。
+購入済み電子書籍をまとめ、既存AIと次に読む本を探すプロジェクトです。
 
-現在はAmazonの購入済み一覧をページ単位で取得してJSONへ保存し、完了済みの取得結果をSQLiteへ取り込めます。少数取得のプロトタイプも残しています。書籍情報の補完・MCPはこれから実装します。
+現在はAmazonの購入済み一覧を取得してSQLiteへ取り込み、CLIで書名・著者を検索できます。書籍情報の補完は未実装です。MCPは保留し、当面はローカルコマンドを実行できるAIからSQLite＋CLIを利用します。
 
 ## セットアップ
 
@@ -92,16 +92,31 @@ pnpm dev library summary
 
 `library summary`は書籍数・取り込み履歴数・取得根拠の件数を表示します。DB操作にはNode.js標準の`node:sqlite`を使用します（固定しているNode 24.21.0ではRelease Candidate扱い）。DBファイルの直接編集はせず、バックアップが必要な場合は本ツールを終了してからコピーしてください。
 
+## 蔵書の検索・詳細取得
+
+```powershell
+pnpm dev library search "検索語"
+pnpm dev library search "書名 著者" --limit 10 --offset 0
+pnpm dev library get B000000001
+```
+
+ASINは実際の検索結果の`productId`に置き換えてください。書名・著者の部分一致検索で、空白区切りの語はすべて満たす必要があります。ASCII英字の大小は区別しません。全半角・表記揺れの吸収や内容・あらすじの検索は行いません。空文字列を指定すると一覧になります。
+
+検索結果はJSONで、`books`・`total`・`limit`・`offset`・`nextOffset`を返します。既定20件、最大100件で、続きは`nextOffset`を`--offset`へ指定します。`nextOffset: null`なら末尾です。書籍はストア・商品ID順です。`get`は書籍と最新の所有確認根拠を返し、未登録なら`book: null`を返します。どちらもDBを読み取り専用で開きます。
+
+AIから呼ぶ場合も同じコマンドを利用できます。ビルド後、実行ログを混ぜずJSONを取得するには、プロジェクトのディレクトリで`pnpm exec node dist/cli.js library search "検索語"`とします。実際の検索結果には個人の蔵書情報が含まれます。MCPサーバーやAIクライアントへの自動登録は行いません。
+
 ## 構成
 
 - `src/cli.ts`: CLIの入口
 - `src/kindle/`: 専用ブラウザの起動、本棚DOMの読み取り、抽出情報の整形
+- `src/library/`: SQLiteへの取り込み、読み取り専用の検索・詳細取得
 - `test/`: 自動テスト
 - `doc/01architecture_discussion.md`: 決定済みの設計
 - `doc/02product_evaluation.md`: 製品・サービスの評価
 - `doc/03design_notes.md`: 未決事項と検討案
 
-同期・情報補完・MCPは、実装時にそれぞれモジュールを分けます。
+同期・情報補完・蔵書検索はそれぞれモジュールを分けます。MCPは必要になった段階で検索モジュールに接続する構成を検討します。
 
 ## ローカルデータ
 
