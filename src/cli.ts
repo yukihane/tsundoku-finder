@@ -11,13 +11,51 @@ if (
         pnpm dev kindle sample [--limit 1〜50]
         pnpm dev kindle purchases [--limit 1〜25]
         pnpm dev kindle purchases --all [--max-pages 1〜1000]
+        pnpm dev library import-kindle <取得フォルダー>
+        pnpm dev library summary
 
 購入済み電子書籍から次の一冊を探すツールです。
 kindle login: 専用ブラウザでログインし、認証状態をローカルに保持します。
 kindle sample: 表示済みの書籍を最大10件（変更可）JSONに保存します。
 kindle purchases: 購入済み一覧の先頭ページから最大10件（変更可）を根拠付きで保存します。
 --all: ページごとに保存して全件取得します。上限到達・失敗は未完了として終了します。
-DB同期・情報補完・MCPは未実装です。`);
+library import-kindle: 完了済みの取得JSONをローカルSQLiteへ取り込みます。
+library summary: DBの書籍数・取り込み数を表示します。
+情報補完・MCPは未実装です。`);
+} else if (
+	args.length === 3 &&
+	args[0] === "library" &&
+	args[1] === "import-kindle" &&
+	args[2]
+) {
+	try {
+		const { importKindleCollection } = await import("./library/database.js");
+		const result = await importKindleCollection(args[2]);
+		console.log(
+			result.alreadyImported
+				? `取り込み済みのため変更なし。蔵書: ${result.total}件`
+				: `${result.imported}件を取り込みました。蔵書: ${result.total}件`,
+		);
+	} catch {
+		console.error(
+			"取り込みに失敗しました。完了済みの取得フォルダー・ファイルの整合性・DBの形式やアクセス状態を確認してください。取り込みの変更は確定していません。",
+		);
+		process.exitCode = 1;
+	}
+} else if (
+	args.length === 2 &&
+	args[0] === "library" &&
+	args[1] === "summary"
+) {
+	try {
+		const { librarySummary } = await import("./library/database.js");
+		console.log(JSON.stringify(librarySummary(), null, 2));
+	} catch {
+		console.error(
+			"蔵書DBを読み取れませんでした。先に取り込みを実行し、DBの形式・アクセス状態を確認してください。",
+		);
+		process.exitCode = 1;
+	}
 } else if (
 	args[0] === "kindle" &&
 	args[1] === "purchases" &&

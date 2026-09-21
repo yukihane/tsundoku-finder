@@ -3,9 +3,9 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { chromium, type Page } from "playwright";
 import { kindleProfilePath } from "./browser.js";
+import { purchasesUrl } from "./source.js";
 
-export const purchasesUrl =
-	"https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksPurchases/dateDsc";
+export { purchasesUrl } from "./source.js";
 
 export function validatePurchaseLimit(limit: number): void {
 	if (!Number.isInteger(limit) || limit < 1 || limit > 25)
