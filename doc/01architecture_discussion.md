@@ -58,6 +58,10 @@ flowchart TD
 
 環境の具体的なバージョンはプロジェクト設定で管理する。代替製品の評価結果だけで採用方針を変更しない。
 
+プロジェクトは単一パッケージ・ES Modules構成とし、TypeScriptのstrict設定で型検査する。Node.jsはpackage.jsonのdevEngines.runtimeでプロジェクト単位に固定し、pnpmが取得する。開発時の実行にはtsx、ビルド・型検査にはTypeScript、テストにはNode.js標準テストランナーを使用する。
+
+CLIはsrc/cli.tsを入口とし、ビルド結果はdist/に出力する。開発・検証手順は[README](../README.md)を参照する。Kindle取得・DB・MCPのライブラリは各機能の実装時に選定する。
+
 ## 5. データ保護と開発ルール
 
 - 認証情報、ブラウザのセッション、実際の蔵書DB、個人情報を含む取得データをGitへ登録しない。
