@@ -135,7 +135,7 @@ pnpm dev library search "書名 著者" --limit 10 --offset 0
 pnpm dev library search "" --publisher "出版社名"
 pnpm dev library get B000000001
 
-# BOOK☆WALKERの詳細取得（取得・取り込みCLIはまだ未実装）
+# BOOK☆WALKERの詳細取得
 pnpm dev library get 00000000-0000-4000-8000-000000000001 --store bookwalker-jp
 ```
 
@@ -161,3 +161,16 @@ AIから呼ぶ場合も同じコマンドを利用できます。ビルド後、
 ## ローカルデータ
 
 検証時の認証状態や個人情報を含む取得データは、Git対象外の`.local/`に置いてください。実際の蔵書DBや認証情報をテストデータとして登録しないでください。`.gitignore`だけに頼らず、コミット前に差分を確認します。
+
+## BOOK☆WALKERの少数取得
+
+```powershell
+pnpm dev bookwalker purchases --limit 25
+pnpm dev library import-bookwalker .local/bookwalker/purchases/<保存ファイル名>.json
+```
+
+取得時に専用Chromiumが開きます。必要ならその画面でログイン・追加認証してください。認証状態はGit対象外の`.local/bookwalker/browser-profile/`へ保存され、調査時にログインした通常のChromeとは共有しません。取得後はブラウザが閉じます。
+
+先頭ページの個別巻表示から最大25冊を取得し、JSONを保存します。検索・絞り込み条件も記録する部分取得で、全蔵書を網羅した扱いにはしません。取得だけではDBを変更せず、後続のimport-bookwalkerで保存します。以前の調査用JSONは取り込めません。
+
+模擬ページからの抽出と隔離DBへの取り込みは検証済みです。新CLIでの実サイト取得はまだ未確認です。書誌情報の補完・読書状態のDB保存・全件巡回には未対応です。

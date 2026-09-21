@@ -1,5 +1,20 @@
 export type Store = "kindle-jp" | "bookwalker-jp";
 
+export interface OwnershipDisplay {
+	heading: string;
+	rangeText: string;
+	rowCount: number;
+	ungrouped: boolean;
+	searchText: string;
+	filters: {
+		category: string;
+		label: string;
+		publisher: string;
+		reading: string;
+		age: string;
+	};
+}
+
 export function validateBookId(store: string, productId: string): void {
 	const valid =
 		store === "kindle-jp"
@@ -34,6 +49,7 @@ export interface OwnershipImport {
 			kind: "amazon-content-filter" | "bookwalker-holdbooks";
 			category: string | null;
 			filter: string | null;
+			display?: OwnershipDisplay;
 		};
 	}>;
 }

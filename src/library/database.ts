@@ -176,7 +176,10 @@ function storeImport(db: DatabaseSync, input: OwnershipImport) {
 				book.evidence.category,
 				book.evidence.filter,
 				book.evidence.kind,
-				JSON.stringify({ observedBook }),
+				JSON.stringify({
+					observedBook,
+					...(book.evidence.display ? { display: book.evidence.display } : {}),
+				}),
 			);
 		}
 		const total = count();

@@ -122,6 +122,15 @@ formatter・linterはBiomeに統一し、標準の整形設定・推奨lintル�
 - スキーマ作成・書籍更新・履歴・根拠の保存を単一トランザクションで確定する。失敗時はロールバックする。外部キーを有効にし、DB識別子とスキーマバージョンを検査して未知のDBを拒否する。新規DBファイル自体は失敗時にも残る場合がある。
 - `library summary`で所有情報の件数を読み取り専用で確認する。
 
+### BOOK☆WALKERの少数取得・取り込み
+
+- `bookwalker purchases [--limit 1〜25]`（既定10件）で購入済み一覧の先頭ページから少数取得する。専用Chromiumでログインを最大5分待ち、認証状態を`.local/bookwalker/browser-profile/`に保存する。通常のChromeやKindleのプロファイルとは別とする。
+- 個々の巻が表示される一覧を対象とし、1ページ50件の表示範囲とDOM行数を検証する。ページ送り・CSV取得・書誌詳細の展開・本文閲覧・読書状態の変更は行わない。
+- UUID、商品URL、書名、著者欄の表示、購入日時を`.local/bookwalker/purchases/`に保存する。著者欄に省略や補助文言が混ざることを許容する。空一覧・集約表示・URLや件数の不整合・必要な画面要素の欠落は失敗とする。
+- 見出し・表示範囲・行数・検索語・カテゴリ／レーベル／出版社／読書状態／R18の選択表示・非集約表示の根拠を同じDOM読み取りで取得する。検索・絞り込みがある一覧も、条件を記録した部分取得として扱う。条件を自動変更しない。
+- `library import-bookwalker <JSON>`でオフライン取り込みする。専用scope・日時・所有根拠・上限・件数・UUID・URL・重複をDBオープン前に再検証する。調査用の旧JSONは受け付けない。同じ検証済み文書は整形差によらず再取り込みしない。
+- scopeはbookwalker-purchased-first-page-sample、completeは常にfalse。DBのcoverageはpartial/bookwalker-holdbooksとし、画面情報はownership_evidence.details.displayに保持する。取得コマンド自体はDBへ書き込まない。新CLIの実サイトでの実行確認は未完了で、模擬DOMと隔離DBで検証済み。
+
 ### 蔵書の検索・詳細取得
 
 - `library search "検索語" [--publisher "出版社"] [--limit 1〜100] [--offset 0〜100000]`で書名・著者表示と最新の補完情報（書名・著者表示・出版社・紹介文・分類・シリーズ表示）を部分一致検索する。空白区切りはAND条件、空文字列は全件を対象とする。出版社指定は補完情報の出版社への部分一致による追加条件とする。ASCII英字の大小は区別しないが、全半角や表記揺れの正規化は行わない。
@@ -164,8 +173,8 @@ formatter・linterはBiomeに統一し、標準の整形設定・推奨lintル�
 - ストア別に検証した入力をOwnershipImportへ変換し、共通の保存処理へ渡す。Kindleのファイル検証と変換はKindle側に置く。商品ID・商品URL・所有根拠・取得日時・重複は共通保存前にも検証する。
 - booksの複合主キーと基本カラムは維持する。ownershipは購入済み一覧に載った意味でのpurchasedであり、有料取得かどうかは確定しない。
 - imports.coverageはstatusとscopeを持つJSON。現時点でKindleはcomplete/kindle-purchased-list、BOOK☆WALKERはpartial/bookwalker-holdbooksを受け付ける。completeは対象範囲の取得完了であり、すべての利用権を取得した意味ではない。
-- BOOK☆WALKERの共通保存・詳細取得は架空データで検証済み。実サイトの保存ファイル検証器・取得CLI・取り込みCLIは未実装。調査用サンプルをそのまま正式入力として扱わない。現在の内部入力は先頭一覧URLに対応し、ページ送りと画面の詳細な条件検証はストア別取得実装時に整備する。
-- 所有根拠のcategory/filterはKindleでは本/購入済み、BOOK☆WALKERではnull。kindで取得元を区別する。details.observedBookに観測時の書名・著者・購入日表示・商品URLを保持し、同じ観測日時の異なる値は拒否する。画面条件の追加項目はBOOK☆WALKER取得実装時に定義する。
+- BOOK☆WALKERは先頭ページの少数取得・保存ファイル検証・部分取り込みまで実装する。全件巡回と書誌補完は未実装。調査用サンプルをそのまま正式入力として扱わない。
+- 所有根拠のcategory/filterはKindleでは本/購入済み、BOOK☆WALKERではnull。kindで取得元を区別する。details.observedBookに観測時の書名・著者・購入日表示・商品URLを保持し、同じ観測日時の異なる値は拒否する。BOOK☆WALKERの画面条件はdetails.displayに保持する。
 - 古い所有根拠には当時の書名等がないため、同時刻の別入力を現在値とも照合できない場合は拒否する。同一取り込みIDの再実行は変更なしとする。不在の書籍は削除しない。
 
 ### DBのテーブル構成
