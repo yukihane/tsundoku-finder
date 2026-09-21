@@ -204,3 +204,13 @@ Steamには `GetOwnedGames` APIがあり、公開状態などの条件に応じ�
 Git対象外の独立した検証用リポジトリで実際のHuskyフックを実行し、自動整形・部分ステージの未ステージ変更保持・lint警告によるコミット停止・Markdownのみのコミット成功・`.local/`の除外を確認した。lint-stagedには安全な修正のみを許可し、`--unsafe`は使用しない。未宣言変数などTypeScriptコンパイラが担当する検査は、Biomeだけで代替しない。
 
 出典: [BiomeのGitフック連携](https://biomejs.dev/recipes/git-hooks/)、[Biome設定](https://biomejs.dev/reference/configuration/)、[Huskyの運用](https://typicode.github.io/husky/how-to.html)。長期運用・別OS・GUIごとのPATH設定は未検証。
+
+## 10. 購入済み一覧のページ取得と途中保存
+
+検証日: 2026-09-22。出典: [Amazon購入済みコンテンツ](https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksPurchases/dateDsc)（要ログイン）。実画面で`#pagination`内の`#page-2`を選択すると、URLに`pageNumber=2`が付与され、選択中の要素が`#page-2.active`、表示範囲が26〜50件へ変わることを確認した。ページ番号付きURLを新しく開く方式でも同じ範囲を取得できた。
+
+`pnpm dev kindle purchases --all --max-pages 2`で実アカウントの2ページ・50件を取得し、ページ別JSONと`report.json`を保存した。上限で停止して`status: page-limit`、`complete: false`、終了コード1となることと、保存先がGit対象外であることを確認した。
+
+架空データのテストでは、最終ページが25件未満の場合の完了、上限到達、ページ間の重複、総件数の変化、通信相当の失敗、ページ保存失敗、中断時の未完了・途中データ保持を確認した。ブラウザテストはAmazonへの通信を架空HTMLで置き換えている。
+
+未検証: 実アカウントでの全ページ通し取得、空の購入済み一覧、長時間の認証維持、OSによる強制終了時の保存結果。途中再開は未実装。全件判定は取得中の件数と一意性の整合に基づき、ストア側の同時変更を完全に検出する保証はない。

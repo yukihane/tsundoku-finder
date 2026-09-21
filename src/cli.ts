@@ -10,12 +10,44 @@ if (
         pnpm dev kindle login
         pnpm dev kindle sample [--limit 1〜50]
         pnpm dev kindle purchases [--limit 1〜25]
+        pnpm dev kindle purchases --all [--max-pages 1〜1000]
 
 購入済み電子書籍から次の一冊を探すツールです。
 kindle login: 専用ブラウザでログインし、認証状態をローカルに保持します。
 kindle sample: 表示済みの書籍を最大10件（変更可）JSONに保存します。
 kindle purchases: 購入済み一覧の先頭ページから最大10件（変更可）を根拠付きで保存します。
-全件同期・情報補完・MCPは未実装です。`);
+--all: ページごとに保存して全件取得します。上限到達・失敗は未完了として終了します。
+DB同期・情報補完・MCPは未実装です。`);
+} else if (
+	args[0] === "kindle" &&
+	args[1] === "purchases" &&
+	args[2] === "--all"
+) {
+	const valid =
+		args.length === 3 ||
+		(args.length === 5 &&
+			args[3] === "--max-pages" &&
+			/^\d+$/.test(args[4] ?? ""));
+	const maximum = args.length === 3 ? 1000 : Number(args[4]);
+	if (
+		!valid ||
+		!Number.isSafeInteger(maximum) ||
+		maximum < 1 ||
+		maximum > 1000
+	) {
+		console.error("使い方: kindle purchases --all [--max-pages 1〜1000]");
+		process.exitCode = 1;
+	} else {
+		try {
+			const { captureAllPurchases } = await import("./kindle/collect.js");
+			if (!(await captureAllPurchases(maximum))) process.exitCode = 1;
+		} catch {
+			console.error(
+				"全件取得を終了できませんでした。ブラウザ・保存先・認証状態を確認してください。既存データは削除していません。",
+			);
+			process.exitCode = 1;
+		}
+	}
 } else if (
 	args[0] === "kindle" &&
 	(args[1] === "sample" || args[1] === "purchases")

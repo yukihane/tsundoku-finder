@@ -12,8 +12,14 @@ export function validatePurchaseLimit(limit: number): void {
 		throw new Error("limit must be 1–25");
 }
 
-export async function readPurchasePage(page: Page, limit: number) {
+export async function readPurchasePage(
+	page: Page,
+	limit: number,
+	pageNumber = 1,
+) {
 	validatePurchaseLimit(limit);
+	if (!Number.isSafeInteger(pageNumber) || pageNumber < 1)
+		throw new Error("Invalid page number");
 	// Read the URL, selected controls and rows together, without async DOM reads
 	// that could accidentally combine two different page states.
 	const snapshot = await page.evaluate(() => ({
@@ -50,13 +56,15 @@ export async function readPurchasePage(page: Page, limit: number) {
 	if (
 		url.origin + url.pathname.replace(/\/$/, "") !== purchasesUrl ||
 		[...url.searchParams].some(
-			([key, value]) => key !== "pageNumber" || value !== "1",
+			([key, value]) => key !== "pageNumber" || value !== String(pageNumber),
 		) ||
+		(pageNumber > 1 &&
+			url.searchParams.get("pageNumber") !== String(pageNumber)) ||
 		snapshot.category !== "本" ||
 		snapshot.filter !== "購入済み" ||
 		snapshot.search !== ""
 	) {
-		throw new Error("Not an unfiltered first purchased-books page");
+		throw new Error("Not an unfiltered purchased-books page");
 	}
 	const range =
 		/([\d,]+)のうち([\d,]+)から([\d,]+)までの商品を表示しています/.exec(
@@ -66,13 +74,15 @@ export async function readPurchasePage(page: Page, limit: number) {
 		? range.slice(1).map((v) => Number(v.replaceAll(",", "")))
 		: [];
 	if (
+		!Number.isSafeInteger(total) ||
 		!total ||
-		start !== 1 ||
+		start !== (pageNumber - 1) * 25 + 1 ||
 		!end ||
+		end < start ||
 		end > total ||
-		end > 25 ||
-		snapshot.rows.length !== end ||
-		new Set(snapshot.rows.map((row) => row.asin)).size !== end ||
+		end > start + 24 ||
+		snapshot.rows.length !== end - start + 1 ||
+		new Set(snapshot.rows.map((row) => row.asin)).size !== end - start + 1 ||
 		snapshot.rows.some(
 			(row) =>
 				!/^[A-Z0-9]{10}$/.test(row.asin) || !row.title || !row.acquiredDateText,
@@ -83,11 +93,15 @@ export async function readPurchasePage(page: Page, limit: number) {
 		);
 	}
 	const capturedAt = new Date().toISOString();
+	const source =
+		pageNumber === 1
+			? purchasesUrl
+			: `${purchasesUrl}?pageNumber=${pageNumber}`;
 	return {
 		schemaVersion: 1,
-		source: purchasesUrl,
+		source,
 		capturedAt,
-		scope: "purchased-first-page-sample",
+		scope: pageNumber === 1 ? "purchased-first-page-sample" : "purchased-page",
 		complete: false,
 		requestedLimit: limit,
 		observedRange: { total, start, end },
@@ -95,7 +109,7 @@ export async function readPurchasePage(page: Page, limit: number) {
 			kind: "amazon-content-filter",
 			category: "本",
 			filter: "購入済み",
-			source: purchasesUrl,
+			source,
 			capturedAt,
 		},
 		books: snapshot.rows.slice(0, limit).map((row) => ({
