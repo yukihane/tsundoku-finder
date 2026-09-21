@@ -432,3 +432,32 @@ DOMでは各商品の`.digital_entity_details`内に`content-read-badge`が表�
 ### BOOK☆WALKER少数取得CLIのオフライン検証
 
 2026-09-22。実地調査で観測したDOM構造を基に模擬ページを作り、外部通信をテスト内で置き換えて検証した。50件表示のうち上限25冊の抽出、検索・絞り込み表示の保持、部分取得としてのSQLite保存と再取り込み抑止を確認。2ページ目・集約表示・件数不一致・商品重複・検索欄の欠落・異なるURL・不正な保存JSONは拒否した。実蔵書DBの変更と実サイトへの追加アクセスは行っていない。新CLIでの実サイト取得は未確認であり、模擬ページの成功だけでは現在の実DOMへの適合を保証しない。根拠はtest/bookwalker.test.ts。
+
+## 19. 第3ストア追加に向けた拡張性の再検証
+
+調査日: 2026-09-22。対象はBOOK☆WALKER少数取得CLI追加後のコミット5483f44。第17節から所有保存の共通化・スキーマv3・ストア指定の詳細取得が進んだため再確認した。外部ストアのAPI・規約・実サイトの取得可否は調査していない。
+
+**結論: 保存SQLと横断検索の土台はあるが、第3ストアは取得モジュールの追加だけでは対応できない。共通検証に2ストア固有の条件が残り、書誌取り込みは依然Kindle専用。**
+
+| 領域 | 確認結果と追加時の影響 |
+|---|---|
+| 所有保存SQL | store/productIdを受け取り、更新・履歴・再取り込み抑止・トランザクションを共有。必須項目が揃えば再利用でき、DBの商品IDにASIN/UUID制約はない |
+| 共通入力・検証 | Store、scope、kindが2ストアの列挙。validateOwnershipが商品URL・一覧URL・フィルター・完了状態をストア別に分岐するため、第3ストア追加時は共通ファイルの修正も必要 |
+| 完了・取得単位 | 共通検証がKindle=complete、BOOK☆WALKER=partialを要求し、pageNumberを必須にする。既存ストアの部分／全件対応拡張でも共通検証の変更が必要 |
+| 所有根拠 | category/filterはnullable化済み。ただしOwnershipDisplayはレーベル・読書状態・R18・非集約等のBOOK☆WALKER画面構造。JSONカラムは再利用できても、共通型は任意ストアの根拠を表せない |
+| 書誌補完 | validateMetadataはkindle-jp、Kindle用scope、ASIN、Amazon URL、著者欄のKindle版表示を要求する。第3ストアだけでなくBOOK☆WALKERも未対応 |
+| 検索・詳細 | searchBooksはストア非依存。getBookのSQLも共通だがvalidateBookIdが2ストアだけ許可する。genres/label等の未対応JSON項目は保存だけでは検索対象にならない |
+| ファイル・CLI | CLIにストア別分岐。Kindle取り込み入口はdatabase.ts、BOOK☆WALKERは取得・ファイル検証・取り込み・ブラウザをpurchases.tsに同居させている。追加時の接続箇所が分散。オフライン取り込みでもPlaywrightモジュールは読み込むがブラウザは起動しない |
+| DBの前提 | 購入日・ページ番号が必須、ownership=purchasedのみ、アカウントキーなし。日付欠損・ページなしAPI・定額／レンタル・同一ストア複数アカウントが必要なら追加設計が必要 |
+
+### 架空ストアによる動作確認
+
+アプリのソースは変更せず、Git対象外の`.local/audit-third-store.mjs`を実行した。新規の`.local/third-store-audit-bHuy5z/probe.sqlite`とresult.jsonを使用し、実蔵書DBにはアクセスしていない。
+
+- 架空ストアの共通入力はimportOwnershipで拒否され、指定DBファイルも作成されなかった。
+- SQLiteへ直接投入した2つの架空ストアで、同じSKU-123を別商品として保持できた。書名検索は2件、片方だけの紹介文と出版社の組み合わせ検索は1件だった。これはDB・検索の検証であり、正式な取り込み成功ではない。
+- 同じ架空商品のgetBookとvalidateMetadataは拒否された。JSON内のgenresだけに置いた語句は検索されなかった。
+- 正常なBOOK☆WALKER入力もcoverageをcompleteに変えると拒否された。pageNumber=nullも拒否された。
+- DBへ購入日NULLまたはownership=subscriptionを設定する操作は制約で拒否された。隔離DBの外部キー違反は0件。
+
+根拠: [共通入力・検証](../src/library/ownership.ts)、[保存SQL・入口](../src/library/database.ts)、[書誌検証・保存](../src/metadata/import.ts)、[検索・詳細](../src/library/queries.ts)、[BOOK☆WALKER処理](../src/bookwalker/purchases.ts)、[CLI](../src/cli.ts)。改善案は検討メモ第13節に記録し、未採用の案を設計書へ反映しない。
