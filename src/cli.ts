@@ -10,6 +10,7 @@ if (
         pnpm dev kindle login
         pnpm dev kindle sample [--limit 1〜50]
         pnpm dev kindle reading-sample [--limit 1〜25]
+        pnpm dev metadata kindle <所有ASIN>
         pnpm dev kindle purchases [--limit 1〜25]
         pnpm dev kindle purchases --all [--max-pages 1〜1000]
         pnpm dev library import-kindle <取得フォルダー>
@@ -24,7 +25,22 @@ kindle purchases: 購入済み一覧の先頭ページから最大10件（変更
 --all: ページごとに保存して全件取得します。上限到達・失敗は未完了として終了します。
 library import-kindle: 完了済みの取得JSONをローカルSQLiteへ取り込みます。
 library summary: DBの書籍数・取り込み数を表示します。
-情報補完は未実装です。MCPの導入は保留しています。`);
+書誌情報の少数取得に対応しています。情報補完のDB保存は未実装です。MCPの導入は保留しています。`);
+} else if (
+	args.length === 3 &&
+	args[0] === "metadata" &&
+	args[1] === "kindle" &&
+	args[2]
+) {
+	try {
+		const { captureKindleMetadata } = await import("./metadata/kindle.js");
+		await captureKindleMetadata(args[2]);
+	} catch {
+		console.error(
+			"書誌情報を取得できませんでした。所有ASIN・DB・商品ページの表示を確認してください。DBは更新していません。",
+		);
+		process.exitCode = 1;
+	}
 } else if (
 	args[0] === "library" &&
 	(args[1] === "search" || args[1] === "get")
