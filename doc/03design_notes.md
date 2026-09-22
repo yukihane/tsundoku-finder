@@ -479,4 +479,4 @@ BOOK☆WALKERの少数取得コマンド、保存形式の検証、オフライ�
 
 BOOK☆WALKER書誌補完の実装に合わせて、商品ID・URL・書誌固有検証・ページ抽出をStoreAdapterへ分離し、静的登録表を導入した。Kindleのブラウザ起動・JSON保存もmetadata/capture.tsへ共通化した。書誌の第3アダプター登録を架空データで検証済み。追加項目label/genres/distributionDateTextは共通JSONで保持し、label/genresを検索に加えた。DBスキーマ変更は不要。
 
-残る検討は所有側のURL・scope・完了条件・OwnershipDisplayの分離、Kindle取り込み入口の移動、BOOK☆WALKER所有取り込みとブラウザ依存の分離。取得方式が異なる次ストアの具体例に合わせて判断する。新CLIの実サイト取得確認もTODOとして残る。互換性のための汎用基盤は追加しない。
+残る検討は所有側のURL・scope・完了条件・OwnershipDisplayの分離、Kindle取り込み入口の移動、BOOK☆WALKER所有取り込みとブラウザ依存の分離。取得方式が異なる次ストアの具体例に合わせて判断する。取得処理の実サイト確認は先頭25冊・書誌1冊で完了した（調査記録第21節）。年齢確認が必要な商品・他のページ形式は未確認。互換性のための汎用基盤は追加しない。

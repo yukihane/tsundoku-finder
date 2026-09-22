@@ -23,7 +23,8 @@ function html({
 	duplicate = false,
 } = {}) {
 	return `<div id="pc-hold-books-react-root"><h2>購入済み書籍一覧 (80件)</h2>
-    ${missingSearch ? "" : '<input type="text" value="架空">'}
+    <input type="text" value="検索条件ではない入力">
+    ${missingSearch ? "" : '<input id="search-keyword" type="search" value="架空">'}
     ${["カテゴリ", "レーベル", "出版社", "未読", "R18表示"].map((s, i) => `<select id="sortDropdownBox${i + 1}"><option selected>${s}</option></select>`).join("")}
     <a>${grouped ? "シリーズをばらして表示する" : "シリーズをまとめて表示する"}</a><p>${range}</p>
     ${Array.from({ length: count }, (_, i) => `<div class="book-txt"><h2><a href="https://bookwalker.jp/de${id(duplicate ? 1 : i + 1)}/">架空の本 ${i + 1}</a></h2><div class="book-meta">架空著者 ほか</div><p class="book-date">2026/09/01 12:30購入</p></div>`).join("")}</div>`;

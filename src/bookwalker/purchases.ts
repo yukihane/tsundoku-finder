@@ -140,8 +140,9 @@ export async function readPurchasePage(page: Page, limit: number) {
 		const rows = Array.from(
 			root?.querySelectorAll<HTMLElement>(".book-txt") ?? [],
 		);
-		const inputs =
-			root?.querySelectorAll<HTMLInputElement>('input[type="text"]');
+		const inputs = root?.querySelectorAll<HTMLInputElement>(
+			'input#search-keyword[type="search"]',
+		);
 		const ranges =
 			(root as HTMLElement | null)?.innerText.match(
 				/[\d,]+\s*[〜～~]\s*[\d,]+\s*件\s*\/\s*全\s*[\d,]+\s*件/g,

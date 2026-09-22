@@ -129,7 +129,7 @@ formatter・linterはBiomeに統一し、標準の整形設定・推奨lintル�
 - UUID、商品URL、書名、著者欄の表示、購入日時を`.local/bookwalker/purchases/`に保存する。著者欄に省略や補助文言が混ざることを許容する。空一覧・集約表示・URLや件数の不整合・必要な画面要素の欠落は失敗とする。
 - 見出し・表示範囲・行数・検索語・カテゴリ／レーベル／出版社／読書状態／R18の選択表示・非集約表示の根拠を同じDOM読み取りで取得する。検索・絞り込みがある一覧も、条件を記録した部分取得として扱う。条件を自動変更しない。
 - `library import-bookwalker <JSON>`でオフライン取り込みする。専用scope・日時・所有根拠・上限・件数・UUID・URL・重複をDBオープン前に再検証する。調査用の旧JSONは受け付けない。同じ検証済み文書は整形差によらず再取り込みしない。
-- scopeはbookwalker-purchased-first-page-sample、completeは常にfalse。DBのcoverageはpartial/bookwalker-holdbooksとし、画面情報はownership_evidence.details.displayに保持する。取得コマンド自体はDBへ書き込まない。新CLIの実サイトでの実行確認は未完了で、模擬DOMと隔離DBで検証済み。
+- scopeはbookwalker-purchased-first-page-sample、completeは常にfalse。DBのcoverageはpartial/bookwalker-holdbooksとし、画面情報はownership_evidence.details.displayに保持する。取得コマンド自体はDBへ書き込まない。検証結果と対象範囲は調査記録第21節を参照。
 
 ### 蔵書の検索・詳細取得
 
@@ -161,7 +161,7 @@ formatter・linterはBiomeに統一し、標準の整形設定・推奨lintル�
 - `metadata bookwalker <所有UUID>`で所有DBに登録済みの商品1冊を取得する。書誌JSONを`.local/metadata/bookwalker/`へ保存し、`metadata import <JSON>`で共通の履歴保存処理へ取り込む。取得コマンド自体はDBを更新しない。
 - 書名、役割を含む著者表示、出版社、紹介文、カテゴリ、シリーズ名・URL、レーベル、ジャンル、配信開始日を取得する。publicationDateTextは不明としてnullとし、配信開始日を発売日へ転用しない。
 - 商品URL、単一の商品見出し、その書名とURLが一致するページ内リンクを照合する。作品情報のdt/ddと対象商品の紹介文領域に限定し、関連商品・広告を取り込まない。同じ項目の重複は曖昧な構造として拒否する。必要に応じ「あらすじを読む」を展開するが、本文・試し読み・購入の操作は行わない。
-- ログイン情報を引き継がない一時ブラウザを使う。認証・年齢確認等で対象商品を確認できない場合は失敗とし、自動再試行や全件取得を行わない。今回の実DOM検証はログイン済みChromeの既存サンプル1冊を保存して再生したもので、未ログインでの新CLI一連の実行は未確認。
+- ログイン情報を引き継がない一時ブラウザを使う。認証・年齢確認等で対象商品を確認できない場合は失敗とし、自動再試行や全件取得を行わない。実サイトでの検証結果と未確認範囲は調査記録第21節を参照。
 
 ### 書誌アダプターの接続
 
