@@ -5,29 +5,47 @@ export const bookwalkerAdapter: StoreAdapter = {
 	command: "bookwalker",
 	metadataScope: "bookwalker-metadata-sample",
 	validateOwnership(input) {
-		if (
-			input.coverage.scope !== "bookwalker-holdbooks" ||
-			input.coverage.status !== "partial"
-		)
+		if (input.coverage.scope !== "bookwalker-holdbooks")
 			throw new Error("Invalid bookwalker coverage");
+		if (input.coverage.status === "complete") {
+			const total = Number(
+				String(input.books[0]?.evidence.display?.heading)
+					.match(/\(([\d,]+)件\)/)?.[1]
+					?.replaceAll(",", ""),
+			);
+			if (total !== input.books.length)
+				throw new Error("Incomplete BOOKWALKER coverage");
+		}
 		for (const book of input.books) {
 			const e = book.evidence;
 			if (
 				book.acquiredDateText === null ||
-				e.source !== "https://bookwalker.jp/holdBooks/" ||
+				e.source !==
+					(e.pageNumber === 1
+						? "https://bookwalker.jp/holdBooks/"
+						: `https://bookwalker.jp/holdBooks/?page=${e.pageNumber}`) ||
 				e.kind !== "bookwalker-holdbooks" ||
 				e.category !== null ||
-				e.filter !== null ||
-				e.pageNumber !== 1
+				e.filter !== null
 			)
 				throw new Error("Invalid bookwalker ownership evidence");
 		}
 	},
 	isProductId: (id) =>
 		/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id),
-	productUrl: (id) => `https://bookwalker.jp/de${id}/`,
+	productUrl: (id, observedUrl) => {
+		const normal = `https://bookwalker.jp/de${id}/`;
+		const adult = `https://r18.bookwalker.jp/de${id}/`;
+		if (
+			observedUrl !== undefined &&
+			observedUrl !== normal &&
+			observedUrl !== adult
+		)
+			throw new Error("Invalid BOOKWALKER product URL");
+		return observedUrl ?? normal;
+	},
 	isSeriesUrl: (url) =>
-		/^https:\/\/bookwalker\.jp\/series\/\d+\/list\/$/.test(url),
+		/^https:\/\/(?:r18\.)?bookwalker\.jp\/series\/\d+\/list\/$/.test(url),
 	validateMetadataFormat(value) {
 		if (
 			!("label" in value) ||

@@ -8,8 +8,12 @@ const profilePath = fileURLToPath(
 	new URL("../../.local/bookwalker/browser-profile/", import.meta.url),
 );
 
-export async function readPurchasePage(page: Page, limit: number) {
-	validateLimit(limit);
+export async function readPurchaseSnapshot(
+	page: Page,
+	limit: number,
+	fullPage = false,
+) {
+	if (!fullPage) validateLimit(limit);
 	const snapshot = await page.evaluate((maximum) => {
 		const root = document.querySelector("#pc-hold-books-react-root");
 		const selects = [
@@ -55,7 +59,9 @@ export async function readPurchasePage(page: Page, limit: number) {
 				const link = row.querySelector<HTMLAnchorElement>("h2 a");
 				const url = link?.href ?? "";
 				return {
-					productId: /^https:\/\/bookwalker\.jp\/de([^/]+)\/$/.exec(url)?.[1],
+					productId: /^https:\/\/(?:r18\.)?bookwalker\.jp\/de([^/]+)\/$/.exec(
+						url,
+					)?.[1],
 					productUrl: url,
 					title: link?.textContent?.trim(),
 					authorsText:
@@ -69,15 +75,29 @@ export async function readPurchasePage(page: Page, limit: number) {
 			}),
 		};
 	}, limit);
-	return validateSample({
+	return {
 		schemaVersion: 1,
-		scope: "bookwalker-purchased-first-page-sample",
+		scope: fullPage
+			? "bookwalker-purchased-page"
+			: "bookwalker-purchased-first-page-sample",
 		store: "bookwalker-jp",
 		capturedAt: new Date().toISOString(),
 		complete: false,
 		requestedLimit: limit,
 		...snapshot,
-	});
+	};
+}
+export async function readPurchasePage(
+	page: Page,
+	limit: number,
+	pageNumber = 1,
+	fullPage = false,
+) {
+	return validateSample(
+		await readPurchaseSnapshot(page, limit, fullPage),
+		pageNumber,
+		fullPage,
+	);
 }
 
 export async function capturePurchasedSample(limit = 10): Promise<void> {

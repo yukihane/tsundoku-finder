@@ -56,8 +56,11 @@ export async function readBookwalkerMetadata(page: Page, productId: string) {
 				.filter((v): v is string => v !== null),
 		};
 	});
-	const source = bookwalkerAdapter.productUrl(productId);
 	const url = new URL(snapshot.url);
+	const source = bookwalkerAdapter.productUrl(
+		productId,
+		url.origin + url.pathname,
+	);
 	if (
 		url.origin + url.pathname !== source ||
 		!snapshot.title ||

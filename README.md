@@ -175,7 +175,7 @@ pnpm dev library import-bookwalker .local/bookwalker/purchases/<保存ファイ�
 
 先頭ページの個別巻表示から最大25冊を取得し、JSONを保存します。検索・絞り込み条件も記録する部分取得で、全蔵書を網羅した扱いにはしません。取得だけではDBを変更せず、後続のimport-bookwalkerで保存します。以前の調査用JSONは取り込めません。
 
-模擬ページに加え、実サイトの先頭25冊の取得と隔離DBへの取り込みを検証済みです。読書状態のDB保存・全件巡回には未対応です。
+模擬ページに加え、実サイトの少数取得と全件巡回を検証しています。読書状態のDB保存には未対応です。
 
 ## BOOK☆WALKERの書誌情報
 
@@ -211,4 +211,42 @@ pnpm dev library get <所有コンテンツID> --store dmm-books
 
 書誌取得は所有DBの商品URLを使い、未ログインの一時Chromiumで1冊ずつ行います。出版社・紹介文・分類・シリーズ・レーベル・ジャンル・配信開始日を保存し、共通検索に利用できます。販売終了商品などで商品欄を確認できない場合は失敗し、所有情報・既存書誌を維持します。
 
-実サイトでは所有25冊と書誌2冊を取り込み、再取り込み・検索・既存ストアデータの保持・SQLite整合性を確認済みです。DBは書き込み時にスキーマv4へ更新します。更新前のバックアップは、ツールを終了してDBをコピーしてください。
+実サイトの少数取得から全件処理へ検証を進めています。最新の実行状況はdoc/04を参照してください。DBは書き込み時にスキーマv5へ更新します。更新前のバックアップは、ツールを終了してDBをコピーしてください。
+
+## BOOK☆WALKER・DMMの全所有取得と再開
+
+```powershell
+pnpm dev bookwalker purchases --all --max-pages 2
+pnpm dev bookwalker purchases --all --resume .local/bookwalker/collections/<ID>.json
+pnpm dev library import-collection .local/bookwalker/collections/<ID>.json
+
+pnpm dev dmm purchases --all --max-pages 2
+pnpm dev dmm purchases --all --resume .local/dmm/collections/<ID>.json
+pnpm dev library import-collection .local/dmm/collections/<ID>.json
+```
+
+取得前にバックアップし、取得コマンドが表示したJSON名を使ってください。ページごとに保存し、`--max-pages`で中断した場合は`complete: false`になります。既定上限は1000ページ。上限による部分保存の終了コードは0ですが、未完了JSONの取り込みは拒否します。取得エラーは終了コード1で、診断はJSON名に`.error.json`を付けたローカルファイルへ保存します。
+
+BOOK☆WALKERは検索・絞り込みなしの通常購入済み一覧が対象で、アーカイブ専用画面や話の閲覧履歴は巡回しません。DMMは「全年齢 / R18すべて」「購入済みすべて」「期限切れ作品非表示」「購入日が新しい順」の本棚から購入済み巻一覧を巡回します。シリーズ件数と冊数は別に数えます。全体件数の変化・重複・未知の画面では停止し、保存済みデータを保持します。
+
+DMMはセッションCookieを`.local/dmm/session.json`にも保存し、次回起動時に復元します。このファイルも認証情報なので、共有・Git登録しないでください。サーバー側で認証期限が切れた場合は再ログインが必要です。書誌取得はこの認証情報を使いません。
+
+## 書誌情報のバッチ処理
+
+```powershell
+pnpm dev metadata batch --store bookwalker --limit 25
+pnpm dev metadata status
+pnpm dev metadata batch --resume <実行ID> --limit 100
+pnpm dev metadata batch --store dmm --all
+pnpm dev metadata batch --store kindle --all
+```
+
+対象はDBにある所有商品だけです。既定では成功済みと失敗・未対応の記録済み商品を除き、実行開始時の対象キューをDBに保存します。表示された実行IDで未処理分から再開できます。1回の処理は既定25件。`--all`は最大25000件で、`--limit`と併用できません。所有取得と異なり、成功書誌をJSONに保存したあと自動でDBへ取り込みます。保存後の中断でも同じJSONを再利用します。
+
+`--retry`は未成功の失敗・未対応も再度対象に含めます。`--refresh`は成功済みを含めて再取得します。商品を限定する場合は`--store dmm --product <ID>`のように両方を指定します。再開時は対象の変更やretry/refreshの指定はできません。失敗済み商品の再試行は別実行で行います。
+
+バッチは画面を開かない一時Chromiumで1件ずつ、既定3秒以上の間隔で取得します。`--interval-ms 5000`等で間隔を延ばせます。Ctrl+Cは実行中の1冊の処理が終わってから停止します。通信失敗だけ1回再試行し、認証要求・CAPTCHA・アクセス制限では停止します。画面構造エラーは3件連続で停止します。失敗による既存書誌の削除・空データへの置換はありません。
+
+`metadata status`でストア別件数、理由別結果、実行ID、残件を確認してください。successでもmissingFieldsに欠損がある場合があります。unavailableはHTTP 404/410等を示し、販売終了と断定するものではありません。completedは対象キューの全商品に結果がある状態で、全項目の取得成功を意味しません。限度到達やアクセス制限で残件があればinterruptedになります。
+
+JSON・DB・認証情報・バッチログはすべて`.local/`配下に保存し、コミット対象にしません。

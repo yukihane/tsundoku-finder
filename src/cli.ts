@@ -10,6 +10,11 @@ if (
         pnpm dev kindle login
         pnpm dev bookwalker purchases [--limit 1〜25]
         pnpm dev dmm purchases [--limit 1〜25]
+        pnpm dev <bookwalker|dmm> purchases --all [--resume <JSON>] [--max-pages 1〜1000]
+        pnpm dev library import-collection <JSON>
+        pnpm dev metadata batch [--store kindle|bookwalker|dmm] [--product <ID>] [--limit 1〜25000|--all] [--retry|--refresh]
+        pnpm dev metadata batch --resume <実行ID> [--limit 1〜25000|--all]
+        pnpm dev metadata status
         pnpm dev library import-dmm <保存済みJSON>
         pnpm dev library import-bookwalker <保存済みJSON>
         pnpm dev kindle sample [--limit 1〜50]
@@ -35,6 +40,97 @@ library import-kindle: 完了済みの取得JSONをローカルSQLiteへ取り�
 library summary: DBの書籍数・取り込み数を表示します。
 library searchは--publisher "出版社名"でも絞り込めます。
 書誌情報の保存・検索に対応しています。読書状態のDB保存は未実装です。MCPの導入は保留しています。`);
+} else if (
+	(args[0] === "bookwalker" || args[0] === "dmm") &&
+	args[1] === "purchases" &&
+	args[2] === "--all"
+) {
+	try {
+		let resume: string | undefined;
+		let maxPages = 1000;
+		const seen = new Set<string>();
+		for (let i = 3; i < args.length; i += 2) {
+			const key = args[i] ?? "";
+			const value = args[i + 1];
+			if (seen.has(key) || !value || !["--resume", "--max-pages"].includes(key))
+				throw new Error("Invalid option");
+			seen.add(key);
+			if (key === "--resume") resume = value;
+			else {
+				if (!/^\d+$/.test(value)) throw new Error("Invalid maximum");
+				maxPages = Number(value);
+			}
+		}
+		const { captureCollection } = await import("./ownership-collection.js");
+		console.log(await captureCollection(args[0], resume, maxPages));
+	} catch {
+		console.error(
+			"全所有取得を停止しました。保存済みJSONは保持しています。認証・表示条件・件数変化・引数を確認してください。",
+		);
+		process.exitCode = 1;
+	}
+} else if (
+	args[0] === "library" &&
+	args[1] === "import-collection" &&
+	args.length === 3 &&
+	args[2]
+) {
+	try {
+		const { importCollection } = await import("./ownership-collection.js");
+		console.log(JSON.stringify(await importCollection(args[2]), null, 2));
+	} catch {
+		console.error(
+			"全件取り込みに失敗しました。完了状態・件数・所有根拠・DBを確認してください。",
+		);
+		process.exitCode = 1;
+	}
+} else if (
+	args[0] === "metadata" &&
+	args[1] === "status" &&
+	args.length === 2
+) {
+	try {
+		const { batchStatus } = await import("./metadata/batch.js");
+		console.log(JSON.stringify(batchStatus(), null, 2));
+	} catch {
+		console.error("処理状況を読み取れませんでした。");
+		process.exitCode = 1;
+	}
+} else if (args[0] === "metadata" && args[1] === "batch") {
+	try {
+		const { runBatch, batchStatus } = await import("./metadata/batch.js");
+		const options: import("./metadata/batch.js").BatchOptions = {};
+		const seen = new Set<string>();
+		for (let i = 2; i < args.length; i++) {
+			const key = args[i] ?? "";
+			if (seen.has(key)) throw new Error("Duplicate option");
+			seen.add(key);
+			if (key === "--all") options.limit = 25000;
+			else if (key === "--refresh") options.refresh = true;
+			else if (key === "--retry") options.retry = true;
+			else {
+				const value = args[++i];
+				if (!value) throw new Error("Missing value");
+				if (key === "--store") options.store = value;
+				else if (key === "--product") options.product = value;
+				else if (key === "--resume") options.resume = value;
+				else if (key === "--limit" && /^\d+$/.test(value))
+					options.limit = Number(value);
+				else if (key === "--interval-ms" && /^\d+$/.test(value))
+					options.intervalMs = Number(value);
+				else throw new Error("Invalid option");
+			}
+		}
+		if (seen.has("--all") && seen.has("--limit"))
+			throw new Error("Conflicting limit");
+		await runBatch(options);
+		console.log(JSON.stringify(batchStatus(), null, 2));
+	} catch {
+		console.error(
+			"書誌処理を停止しました。metadata statusで状況を確認し、実行IDを指定して再開してください。引数・DB・保存先も確認してください。",
+		);
+		process.exitCode = 1;
+	}
 } else if (args[0] === "dmm" && args[1] === "purchases") {
 	try {
 		if (

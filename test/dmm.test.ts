@@ -270,6 +270,6 @@ INSERT INTO metadata_snapshots VALUES('meta','kindle-jp','B000000001','${stamp}'
 		upgrade.prepare("SELECT document FROM latest_metadata").get()?.document,
 		'{"description":"既存説明"}',
 	);
-	assert.equal(upgrade.prepare("PRAGMA user_version").get()?.user_version, 4);
+	assert.equal(upgrade.prepare("PRAGMA user_version").get()?.user_version, 5);
 	upgrade.close();
 });

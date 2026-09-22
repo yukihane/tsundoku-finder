@@ -32,7 +32,7 @@ export function validateLimit(n: number) {
 	if (!Number.isSafeInteger(n) || n < 1 || n > 25)
 		throw new Error("Invalid DMM sample limit");
 }
-function range(v: unknown, count: unknown) {
+export function range(v: unknown, count: unknown, expectedStart = 1) {
 	const ranges = list(v).map((s) => text(s));
 	if (!ranges.length || new Set(ranges).size !== 1)
 		throw new Error("Ambiguous DMM range");
@@ -43,22 +43,26 @@ function range(v: unknown, count: unknown) {
 	const [start, end, total] =
 		match?.slice(1).map((s) => Number(s.replaceAll(",", ""))) ?? [];
 	if (
-		start !== 1 ||
+		!Number.isSafeInteger(expectedStart) ||
+		expectedStart < 1 ||
+		start !== expectedStart ||
 		!end ||
 		!total ||
 		!Number.isSafeInteger(total) ||
 		end > total ||
-		end !== count ||
-		end > 100
+		end < start ||
+		end - start + 1 !== count ||
+		end - start + 1 > 100
 	)
 		throw new Error("Invalid DMM first-page range");
-	return { ranges, rowCount: end, total };
+	return { ranges, rowCount: end - start + 1, total, start, end };
 }
-export function validateShelf(raw: unknown) {
+export function validateShelf(raw: unknown, pageNumber = 1) {
 	const v = object(raw);
-	const r = range(v.ranges, v.rowCount);
+	const r = range(v.ranges, v.rowCount, (pageNumber - 1) * 20 + 1);
 	if (
-		v.source !== shelfUrl ||
+		v.source !==
+			(pageNumber === 1 ? shelfUrl : `${shelfUrl}?page=${pageNumber}`) ||
 		v.heading !== "本棚" ||
 		v.search !== "" ||
 		v.sort !== "購入日が新しい順" ||
@@ -66,7 +70,7 @@ export function validateShelf(raw: unknown) {
 			JSON.stringify(["全年齢 / R18すべて", "購入済みすべて"]) ||
 		JSON.stringify(v.selectedFilters) !== JSON.stringify(v.filters) ||
 		v.expiryFilter !== "orangeBoldSquareOn" ||
-		r.rowCount !== Math.min(20, r.total)
+		r.rowCount !== Math.min(20, r.total - r.start + 1)
 	)
 		throw new Error("Unsupported DMM shelf conditions");
 	const seen = new Set<string>();
@@ -83,7 +87,7 @@ export function validateShelf(raw: unknown) {
 	});
 	if (series.length !== r.rowCount) throw new Error("DMM shelf count mismatch");
 	return {
-		source: shelfUrl,
+		source: text(v.source),
 		heading: "本棚",
 		ranges: r.ranges,
 		rowCount: r.rowCount,
@@ -95,11 +99,11 @@ export function validateShelf(raw: unknown) {
 		series,
 	};
 }
-export function validateVolumes(raw: unknown) {
+export function validateVolumes(raw: unknown, expectedStart = 1) {
 	const v = object(raw);
 	const source = text(v.source);
 	const seriesId =
-		/^https:\/\/book\.dmm\.com\/product\/([1-9]\d*)\/volumes\/\?tab=purchased$/.exec(
+		/^https:\/\/book\.dmm\.com\/product\/([1-9]\d*)\/volumes\/\?tab=purchased(?:&page=[1-9]\d*)?$/.exec(
 			source,
 		)?.[1];
 	if (
@@ -108,7 +112,7 @@ export function validateVolumes(raw: unknown) {
 		v.otherRowCount !== 0
 	)
 		throw new Error("Not a DMM purchased volume page");
-	const r = range(v.ranges, v.rowCount);
+	const r = range(v.ranges, v.rowCount, expectedStart);
 	const seen = new Set<string>();
 	const books = list(v.books).map((rawBook) => {
 		const b = object(rawBook);
@@ -266,19 +270,18 @@ export function toOwnership(raw: unknown): OwnershipImport {
 	};
 }
 export function validateDmmOwnership(input: OwnershipImport) {
-	if (
-		input.coverage.status !== "partial" ||
-		input.coverage.scope !== "dmm-shelf-purchased-volumes"
-	)
+	if (input.coverage.scope !== "dmm-shelf-purchased-volumes")
 		throw new Error("Invalid DMM coverage");
 	for (const b of input.books) {
 		const { seriesId } = productIdentity(b.productUrl);
 		const e = b.evidence;
 		const d = e.display;
 		if (
-			e.source !== volumeUrl(seriesId) ||
+			e.source !==
+				(e.pageNumber === 1
+					? volumeUrl(seriesId)
+					: `${volumeUrl(seriesId)}&page=${e.pageNumber}`) ||
 			e.kind !== "dmm-purchased-volume" ||
-			e.pageNumber !== 1 ||
 			e.category !== null ||
 			e.filter !== "購入済み" ||
 			b.acquiredDateText !== null ||

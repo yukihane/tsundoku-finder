@@ -22,16 +22,29 @@ function text(value: unknown, empty = false): string {
 	return value;
 }
 
-export function validateSample(value: unknown) {
+export function validateSample(
+	value: unknown,
+	pageNumber = 1,
+	fullPage = false,
+) {
 	const v = object(value);
 	const limit = Number(v.requestedLimit);
-	validateLimit(limit);
+	if (fullPage) {
+		if (limit !== 50 || !Number.isSafeInteger(pageNumber) || pageNumber < 1)
+			throw new Error("Invalid full page");
+	} else validateLimit(limit);
 	const capturedAt = text(v.capturedAt);
 	if (
 		v.schemaVersion !== 1 ||
-		v.scope !== "bookwalker-purchased-first-page-sample" ||
+		v.scope !==
+			(fullPage
+				? "bookwalker-purchased-page"
+				: "bookwalker-purchased-first-page-sample") ||
 		v.store !== "bookwalker-jp" ||
-		v.source !== purchasesUrl ||
+		v.source !==
+			(pageNumber === 1
+				? purchasesUrl
+				: `${purchasesUrl}?page=${pageNumber}`) ||
 		v.complete !== false ||
 		v.requestedLimit !== limit ||
 		!Number.isFinite(Date.parse(capturedAt)) ||
@@ -49,11 +62,11 @@ export function validateSample(value: unknown) {
 	const total = range?.[2];
 	const headingTotal = /^購入済み書籍一覧\s*\(([\d,]+)件\)$/.exec(heading)?.[1];
 	if (
-		range?.[0] !== 1 ||
+		range?.[0] !== (pageNumber - 1) * 50 + 1 ||
 		!total ||
 		!Number.isSafeInteger(total) ||
-		range[1] !== Math.min(50, total) ||
-		e.rowCount !== range[1] ||
+		range[1] !== Math.min(pageNumber * 50, total) ||
+		e.rowCount !== range[1] - range[0] + 1 ||
 		Number(headingTotal?.replaceAll(",", "")) !== total ||
 		e.ungrouped !== true
 	)
@@ -69,14 +82,14 @@ export function validateSample(value: unknown) {
 	const evidence = {
 		heading,
 		rangeText,
-		rowCount: range[1],
+		rowCount: range[1] - range[0] + 1,
 		ungrouped: true,
 		searchText: text(e.searchText, true),
 		filters,
 	};
 	if (
 		!Array.isArray(v.books) ||
-		v.books.length !== Math.min(limit, range[1] ?? 0)
+		v.books.length !== Math.min(limit, evidence.rowCount)
 	)
 		throw new Error("Invalid sample size");
 	const seen = new Set<string>();
@@ -86,7 +99,8 @@ export function validateSample(value: unknown) {
 		validateBookId("bookwalker-jp", productId);
 		if (
 			seen.has(productId) ||
-			b.productUrl !== `https://bookwalker.jp/de${productId}/` ||
+			(b.productUrl !== `https://bookwalker.jp/de${productId}/` &&
+				b.productUrl !== `https://r18.bookwalker.jp/de${productId}/`) ||
 			b.ownership !== "purchased"
 		)
 			throw new Error("Invalid book identity");
@@ -105,9 +119,11 @@ export function validateSample(value: unknown) {
 	});
 	return {
 		schemaVersion: 1,
-		scope: "bookwalker-purchased-first-page-sample",
+		scope: fullPage
+			? "bookwalker-purchased-page"
+			: "bookwalker-purchased-first-page-sample",
 		store: "bookwalker-jp" as const,
-		source: purchasesUrl,
+		source: text(v.source),
 		capturedAt,
 		complete: false,
 		requestedLimit: limit,

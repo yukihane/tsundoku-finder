@@ -13,7 +13,26 @@ const applicationId = 0x54534e44;
 export function initialize(db: DatabaseSync): void {
 	const version = db.prepare("PRAGMA user_version").get()?.user_version;
 	const app = db.prepare("PRAGMA application_id").get()?.application_id;
-	if (version === 4 && app === applicationId) return;
+	if (version === 5 && app === applicationId) return;
+	if (version === 4 && app === applicationId) {
+		db.exec(`
+			CREATE TABLE metadata_runs (
+				id TEXT PRIMARY KEY, started_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+				status TEXT NOT NULL CHECK(status IN ('running','interrupted','completed')),
+				options TEXT NOT NULL CHECK(json_valid(options))
+			) STRICT;
+			CREATE TABLE metadata_tasks (
+				run_id TEXT NOT NULL REFERENCES metadata_runs(id), store TEXT NOT NULL, product_id TEXT NOT NULL,
+				status TEXT NOT NULL CHECK(status IN ('pending','running','success','failed','unsupported','skipped')),
+				attempts INTEGER NOT NULL DEFAULT 0, reason TEXT, updated_at TEXT NOT NULL,
+				filename TEXT, missing_fields TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(missing_fields)),
+				PRIMARY KEY(run_id, store, product_id), FOREIGN KEY(store, product_id) REFERENCES books(store, product_id)
+			) STRICT;
+			CREATE INDEX metadata_tasks_product ON metadata_tasks(store, product_id, updated_at);
+			PRAGMA user_version = 5;
+		`);
+		return;
+	}
 	if (version === 3 && app === applicationId) {
 		const schemaObjects = db
 			.prepare(
@@ -57,6 +76,7 @@ export function initialize(db: DatabaseSync): void {
       PRAGMA user_version = 4;
     `);
 		for (const item of schemaObjects) db.exec(String(item.sql));
+		initialize(db);
 		return;
 	}
 	if (version === 2 && app === applicationId) {
@@ -267,7 +287,7 @@ export function readLibrary<T>(
 		if (
 			db.prepare("PRAGMA application_id").get()?.application_id !==
 				applicationId ||
-			![1, 2, 3, 4].includes(
+			![1, 2, 3, 4, 5].includes(
 				Number(db.prepare("PRAGMA user_version").get()?.user_version),
 			)
 		)

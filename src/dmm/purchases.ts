@@ -10,6 +10,7 @@ import {
 	validateShelf,
 	validateVolumes,
 } from "./import.js";
+import { restoreDmmSession, saveDmmSession } from "./session.js";
 
 export async function readShelf(page: Page) {
 	return validateShelf(await page.evaluate(readShelfDom));
@@ -73,6 +74,10 @@ export async function capturePurchasedSample(limit = 25) {
 	process.once("SIGINT", close);
 	process.once("SIGTERM", close);
 	try {
+		const sessionDirectory = fileURLToPath(
+			new URL("../../.local/dmm/", import.meta.url),
+		);
+		await restoreDmmSession(context, sessionDirectory);
 		const page = await context.newPage();
 		console.log(
 			"DMM本棚を最大5分待ちます。専用ブラウザーでログイン・追加認証を完了してください。",
@@ -86,6 +91,7 @@ export async function capturePurchasedSample(limit = 25) {
 			.first()
 			.waitFor({ timeout: 300000 });
 		const sample = await collectSample(page, limit);
+		await saveDmmSession(context, sessionDirectory);
 		const directory = fileURLToPath(
 			new URL("../../.local/dmm/purchases/", import.meta.url),
 		);

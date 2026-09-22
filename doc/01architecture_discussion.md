@@ -1,6 +1,6 @@
 # tsundoku-finder 設計書
 
-更新日: 2026-09-22
+更新日: 2026-09-23
 
 本書には決定済みの要件・設計方針を記載する。記載内容は実装完了を意味しない。未決事項を推奨案のまま仕様として扱わない。
 
@@ -20,7 +20,7 @@
 - 対応対象はAmazon Kindle、BOOK☆WALKER、DMMブックス。DMMは`https://book.dmm.com/shelf/`で取得できる書籍を対象とする。ストア別の検証・取得処理を追加できる構造とする。
 - 電子書籍本文の取得・DRM解除・本文の要約は対象にしない。
 - 公開されている紹介文・あらすじなどを推薦の材料にする。
-- 手動CSV取り込みを初期の必須機能にはしない。BOOK☆WALKERの公式CSVの利用可否は調査候補として保留する。
+- 所有取得は商品ID・商品URLを確認できるDOMを使う。BOOK☆WALKERの公式購入済みCSVは商品IDがないため、主入力にはせず範囲・件数の照合に使う。手動CSV取り込みを必須にはしない。
 - プロトタイピング中は旧スキーマ・保存形式・CLIとの互換性を必須要件にしない。必要な変更は最新版に揃えて行う。保存済みデータの再利用と、取得し直しを最小限にする方針は維持する。
 
 ## 3. システム構成
@@ -150,17 +150,17 @@ formatter・linterはBiomeに統一し、標準の整形設定・推奨lintル�
 - 商品IDの照合、所有の根拠、出典・取得日時の保持、欠損を推測で埋めない方針は維持する。実際の検索で不足した項目だけ追加取得を検討する。
 
 - `metadata kindle <所有ASIN>`で蔵書DBに存在するKindle商品1冊を取得する。ログイン状態を引き継がない一時Chromiumを使い、商品ページを開いて処理後に閉じる。購入・本文閲覧・状態変更は行わない。
-- URLと登録情報のASIN、書名、著者欄のKindle版表示を照合する。確認できないページは保存せず失敗する。自動再試行・一括取得は行わない。
+- URLと登録情報のASIN、書名、著者欄のKindle版表示を照合する。確認できないページは保存せず失敗する。単冊コマンドは再試行せず、全件処理は後述の書誌バッチを使う。
 - 対象商品欄に限定し、書名・著者表示・出版社・発売日表示・紹介文・ストア分類・シリーズ表示とURLを出典・取得日時付きで`.local/metadata/kindle/`へ保存する。空白・方向制御文字を整理するが、紹介文の生成・要約や独自分類への変換は行わない。
 - scopeは`kindle-metadata-sample`。未取得はnullまたは空配列とし、推測で埋めない。シリーズURLの追跡、ISBN照合は行わない。
-- 検証では購入済み一覧1ページ分（25冊）を基本の固定サンプルとし、保存済みJSONを再利用する。追加項目の検証ごとに購入済み一覧や商品情報を全件再取得しない。不足時だけ必要な少数を追加取得し、全蔵書への展開は後で判断する。
+- 項目追加の検証は1ページ分（25冊）を基本の固定サンプルとし、保存済みJSONを再利用する。全所有取得・全書誌処理は実用化のための独立した処理とし、項目追加のたびに全件を取り直さない。
 
 ### BOOK☆WALKERの書誌補完
 
 - `metadata bookwalker <所有UUID>`で所有DBに登録済みの商品1冊を取得する。書誌JSONを`.local/metadata/bookwalker/`へ保存し、`metadata import <JSON>`で共通の履歴保存処理へ取り込む。取得コマンド自体はDBを更新しない。
 - 書名、役割を含む著者表示、出版社、紹介文、カテゴリ、シリーズ名・URL、レーベル、ジャンル、配信開始日を取得する。publicationDateTextは不明としてnullとし、配信開始日を発売日へ転用しない。
 - 商品URL、単一の商品見出し、その書名とURLが一致するページ内リンクを照合する。作品情報のdt/ddと対象商品の紹介文領域に限定し、関連商品・広告を取り込まない。同じ項目の重複は曖昧な構造として拒否する。照合時に限り見出し先頭の「【最新刊】」表示を除いた一致も認め、保存する書名には表示を残す。表示中の「あらすじを読む」ボタンがある場合だけ展開する。本文・試し読み・購入の操作は行わない。
-- ログイン情報を引き継がない一時ブラウザを使う。認証・年齢確認等で対象商品を確認できない場合は失敗とし、自動再試行や全件取得を行わない。実サイトでの検証結果と未確認範囲は[調査記録](02product_evaluation.md)を参照。
+- ログイン情報を引き継がない一時ブラウザを使う。認証・年齢確認等で対象商品を確認できない場合は失敗とする。単冊コマンドと共通書誌バッチを分ける。実サイトでの検証結果と未確認範囲は[調査記録](02product_evaluation.md)を参照。
 
 ### ストアアダプターの接続
 
@@ -174,28 +174,49 @@ formatter・linterはBiomeに統一し、標準の整形設定・推奨lintル�
 - 検証対象の条件は検索なし・購入日が新しい順・全年齢/R18すべて・購入済みすべて・期限切れ作品非表示。条件は自動変更せず、不一致・未知の構造は失敗とする。一般向けと成人向けの指定は対象範囲の決定であり、全画面の検証完了を意味しない。
 - ストアIDは`dmm-books`、商品IDは固定コンテンツID。巻ごとの購入済み表示、選択中の購入済みタブ、表示範囲・行数、シリーズURL、商品リンクとダウンロードリンク内のIDを照合する。レビューリンクがある場合もIDを照合する。`latest`はその行の固定IDへ解決し、本文・ダウンロード・レビュー操作は行わない。
 - scopeは`dmm-purchased-sample`、coverageは`partial/dmm-shelf-purchased-volumes`、所有根拠kindは`dmm-purchased-volume`。本棚の著者表示を保存し、購入日はnullとする。取得範囲・表示条件・巻ごとの商品リンクを所有根拠に残す。有料購入かどうかは推測しない。
-- `.local/dmm/purchases/`へJSONを保存し、`library import-dmm <JSON>`で検証後に共通DBへ取り込む。件数照合用に最後の巻一覧ページ全体を保持するためJSONの行数は上限を超える場合があるが、DB取り込みは上限以内とする。中断時の途中保存・全件巡回は後続タスク。
+- 少数取得は`.local/dmm/purchases/`へJSONを保存し、`library import-dmm <JSON>`で検証後に共通DBへ取り込む。件数照合用に最後の巻一覧ページ全体を保持するためJSONの行数は上限を超える場合があるが、DB取り込みは上限以内とする。全件巡回は次節の別形式を使う。
 - `metadata dmm <所有コンテンツID>`で一時ブラウザーから1冊取得し、`.local/metadata/dmm/`へ保存する。scopeは`dmm-metadata-sample`。商品URL・canonical・単一見出し・作品詳細領域を確認し、出版社・紹介文・カテゴリ・シリーズ・レーベル・ジャンル・配信開始日を共通項目に保存する。発売日はnull。広告・関連商品を混ぜない。
 - 書誌取得は認証状態を引き継がない。販売終了・認証・年齢確認等で対象商品を確認できない場合は新しい書誌文書を作らず失敗し、所有・書誌の既存情報を保持する。
+
+### BOOK☆WALKER・DMMの全所有取得
+
+- `<bookwalker|dmm> purchases --all [--resume <JSON>] [--max-pages N]`でページごとに検証し、`.local/<store>/collections/`へJSONを一時ファイルからの置換で保存する。上限は新規保存ページ数、既定1000。上限到達は正常な部分保存であり、`complete: false`のまま返す。
+- BOOK☆WALKERの対象は検索なし・全フィルター初期値・シリーズをまとめない通常の`holdBooks`一覧。通常ドメインと`r18.bookwalker.jp`の商品URLをUUIDと照合して保持する。無料取得・連携由来でもこの一覧に現れる商品は含むが、取得の由来や有料かどうかを推測しない。別画面のアーカイブ・話閲覧履歴・読み放題一覧は巡回しない。
+- DMMの対象は既定の検証条件の本棚と、そのシリーズの購入済み巻一覧。期限切れ非表示を維持し、フィルターを自動変更しない。本棚表示件数はシリーズ数であり、冊数は各巻一覧から別に数える。異なる話単位の画面や所有根拠を確認できない区分は通常巻へ変換して混ぜず停止する。
+- 連続範囲・表示総数の一致・商品重複なし・終端を確認し、DMMは本棚と各巻一覧の両方が終端に達した場合だけ完了にする。空一覧は現状未対応。取得はストアごとに1プロセス、ページ遷移前に2秒待つ。
+- 再開時は保存済みページを検証して再利用し、先頭一覧の総数変化を拒否する。ページ取得中の変化も範囲・総数・重複で検出する。ただしストアの原子的なスナップショットではなく、総数の変わらない同時編集を完全に検出する保証はない。
+- 未完了JSONは取り込まない。`library import-collection <JSON>`で全ページを再検証し、complete/bookwalker-holdbooksまたはcomplete/dmm-shelf-purchased-volumesとして保存する。失敗時の診断は同じ保存先の`.error.json`へ残し、書名・個別URLを公開しない。既存所有情報は削除しない。
+- DMMのセッションCookieはChromium終了後も再利用できるよう、プロファイルに加えて`.local/dmm/session.json`へ保存し、次の所有取得で復元する。内容をログへ出さず、Gitにも登録しない。サーバー側の認証期限切れは本人の再ログインが必要。書誌取得にはこの認証状態を渡さない。
+
+### 全所有商品の書誌バッチ
+
+- `metadata batch`は既存の所有DBから対象一覧を確定して実行履歴へ保存する。`--store kindle|bookwalker|dmm`、`--product <ID>`（store必須）で制限できる。1回の実行は既定25件、`--limit 1〜25000`または`--all`で変更する。件数上限後も残りのキューを保持する。
+- 既定では成功済みと、失敗・未対応を記録済みの商品を除く。`--retry`は失敗・未対応も対象に戻し、成功済みは除く。`--refresh`だけが成功済みを再取得する。両者は併用しない。
+- `--resume <実行ID>`は同じキューの未処理分から再開する。失敗済みの再試行は別の`--retry`実行にする。保存JSONがある場合は商品照合後に取り込むため、保存後・DB取り込み前の中断でも再取得しない。他の実行で補完済みならスキップする。
+- バッチは未ログインの一時headless Chromiumを再利用し、同じDBにつき1プロセス・同時取得1件。既定間隔3秒、`--interval-ms`で3〜60秒に変更できる。通信失敗のみ最大1回、間隔を2倍にして再試行する。
+- 商品状態はpending/running/success/failed/unsupported/skipped。実行状態はrunning/interrupted/completed。商品別に試行回数、理由、保存先、更新時刻、missingFieldsを保持する。強制終了時にrunningが残った場合は、ロックの所有プロセスが存在しないことを確認して再開する。
+- 理由はauthentication、age_verification、captcha、unavailable、rate_limit、access_denied、network、structure。HTTP 404/410はunavailableであり、販売終了と断定しない。unavailable・年齢確認は現方式での未対応とするが恒久的な不能とは断定せず、明示再試行できる。
+- 認証・CAPTCHA・429・403で実行を停止する。構造エラーは3件連続で停止する。回避や自動認証は行わない。通信以外のサイト失敗は自動再試行しない。DB・保存先の障害はサイト側の失敗に分類せず実行を止める。
+- 成功JSONだけを既存の書誌履歴へ取り込み、失敗で空データを作らない。`metadata status`はストア別の全体・成功・欠損あり・未処理・失敗・未対応と、実行別結果を表示する。missingFieldsは4項目の欠損一覧であり、全項目充足率ではない。
 
 ### 保存済み書誌情報の取り込み
 
 - `metadata import <JSONファイル>`で1冊分の保存済み書誌JSONを既存の蔵書DBへ取り込む。ネットワーク・ブラウザは使わない。形式・商品ID・出典・取得日時・欠損表示を検証し、未所有の商品は拒否する。
 - `metadata_snapshots`に出典・取得日時を含む文書全体を保存し、所有情報を上書きしない。検証後の文書のSHA-256で同一内容の再取り込みを抑止する。同じ商品・取得日時で内容が異なる場合は競合として拒否する。
 - `latest_metadata`は商品ごとに取得日時が最新の文書を選ぶ。過去の文書は保持するが、最新文書の欠損を古い値で埋めず、検索と詳細取得には最新文書を使う。
-- 現在のDB更新処理はv1〜v3をv4へ更新し、保存と同一トランザクションで行う。失敗時は更新も取り消す。読み取り時には更新しない。旧版への長期互換は保証しない。
+- 現在のDB更新処理はv1〜v4をv5へ更新し、保存またはバッチ準備と同一トランザクションで行う。失敗時は更新も取り消す。読み取り時には更新しない。旧版への長期互換は保証しない。
 - `metadata summary`は全所有冊数（total）、書誌情報を取り込み済みの冊数（captured）、未取り込み冊数（pending）、保存した履歴数（snapshots）を返す。capturedは全項目の補完完了を意味せず、欠損は各文書のmissingFieldsで確認する。
 
 ## 5. DBの保存項目とテーブル構成
 
-保存項目とテーブル構成は以下のスキーマv4とする。所有情報の保存をストア別の検証・変換から分離する。実データの取り込み・検証履歴は調査記録に記載する。
+保存項目とテーブル構成は以下のスキーマv5とする。所有情報の保存をストア別の検証・変換から分離する。実データの取り込み・検証履歴は調査記録に記載する。
 
 ### 所有情報の共通保存
 
 - ストア別に検証した入力をOwnershipImportへ変換し、共通の保存処理へ渡す。Kindleのファイル検証・変換・取り込み入口はKindle側に置く。BOOK☆WALKERのファイル検証・取り込みはbookwalker/import.tsに置き、ブラウザ取得処理から分離する。共通保存前に登録済みアダプターで商品ID・商品URL・所有根拠・取得範囲を検証し、共通処理で取得日時・件数・重複・文字列の整合性を検証する。未登録ストアは拒否する。
 - booksの複合主キーと基本カラムは維持する。ownershipは購入済み一覧に載った意味でのpurchasedであり、有料取得かどうかは確定しない。
-- imports.coverageはstatusとscopeを持つJSON。Kindleはcomplete/kindle-purchased-list、BOOK☆WALKERはpartial/bookwalker-holdbooks、DMMはpartial/dmm-shelf-purchased-volumesを受け付ける。completeは対象範囲の取得完了であり、すべての利用権を取得した意味ではない。
-- BOOK☆WALKERは先頭ページの少数取得・保存ファイル検証・部分取り込みまで実装する。書誌補完は所有商品1冊ずつ対応し、全件巡回は未実装。調査用サンプルをそのまま正式入力として扱わない。
+- imports.coverageはstatusとscopeを持つJSON。Kindleはcomplete/kindle-purchased-list、BOOK☆WALKERはpartialまたはcomplete/bookwalker-holdbooks、DMMはpartialまたはcomplete/dmm-shelf-purchased-volumesを受け付ける。completeは対象範囲の取得完了であり、すべての利用権を取得した意味ではない。
+- BOOK☆WALKER・DMMの少数取得と全件取得は別の保存形式と検証入口を持つ。調査用サンプルを正式な全件入力として扱わない。
 - 所有根拠のcategory/filterはKindleでは本/購入済み、BOOK☆WALKERではnull。kindで取得元を区別する。details.observedBookに観測時の書名・著者・購入日表示・商品URLを保持し、同じ観測日時の異なる値は拒否する。ストア別の追加根拠はdetails.displayに保持する。共通型はストア固有の項目を規定せず、BOOK☆WALKERの画面条件は同ストアのファイル検証で確認する。
 - 古い所有根拠には当時の書名等がないため、同時刻の別入力を現在値とも照合できない場合は拒否する。同一取り込みIDの再実行は変更なしとする。不在の書籍は削除しない。
 
@@ -207,8 +228,10 @@ formatter・linterはBiomeに統一し、標準の整形設定・推奨lintル�
 | imports | 主キーid（取得ファイル一式のSHA-256） | 購入済み一覧の取り込み履歴 |
 | ownership_evidence | 主キー(import_id, store, product_id)。importsとbooksを参照 | 商品ごとの所有確認根拠 |
 | metadata_snapshots | 主キーid（検証後の書誌文書のSHA-256）。(store, product_id, captured_at)は一意。booksを参照 | 公開商品情報の取得履歴と取得値のJSON |
+| metadata_runs | 主キーid（UUID） | バッチ開始・更新時刻、状態、対象選択オプションのJSON |
+| metadata_tasks | 主キー(run_id, store, product_id)。runsとbooksを参照 | 商品別状態、試行回数、理由、更新時刻、保存先、欠損項目JSON |
 
-`latest_metadata`は、商品ごとに取得日時が最新のmetadata_snapshotsを選ぶビューとする。別の実体テーブルに最新値を複製しない。4テーブルはSTRICTとし、書き込み接続で外部キーを有効にする。
+`latest_metadata`は、商品ごとに取得日時が最新のmetadata_snapshotsを選ぶビューとする。別の実体テーブルに最新値を複製しない。6テーブルはSTRICTとし、書き込み接続で外部キーを有効にする。
 
 ### 通常のカラムとして保持する項目
 
@@ -218,12 +241,16 @@ formatter・linterはBiomeに統一し、標準の整形設定・推奨lintル�
 | imports | id, source_store, started_at, completed_at, imported_at, book_count, coverage |
 | ownership_evidence | import_id, store, product_id, page_number, source, captured_at, category, filter, kind, details |
 | metadata_snapshots | id, store, product_id, captured_at, document |
+| metadata_runs | id, started_at, updated_at, status, options |
+| metadata_tasks | run_id, store, product_id, status, attempts, reason, updated_at, filename, missing_fields |
 
-book_count・page_numberはINTEGER、その他はTEXT。acquired_date_text・category/filterと旧履歴のcoverageはNULLを許可し、それ以外はNOT NULL。ownershipはpurchasedのみ。document・detailsと非NULLのcoverageにjson_valid制約を設ける。取得日時はUTCのISO 8601文字列とし、商品画面に表示された購入日・発売日の文字列とは区別する。
+book_count・page_number・attemptsはINTEGER、その他はTEXT。acquired_date_text・category/filter・reason・filenameと旧履歴のcoverageはNULLを許可し、それ以外はNOT NULL。ownershipはpurchasedのみ。document・details・options・missing_fieldsと非NULLのcoverageにjson_valid制約を設ける。取得日時はUTCのISO 8601文字列とし、商品画面に表示された購入日・発売日の文字列とは区別する。
 
 現行のv1/v2更新処理は既存行・取り込みID・書誌JSONを保持し、旧imports.coverageはNULL、旧ownership_evidence.detailsは空オブジェクトとする。更新・取り込みを同じトランザクションで行う。旧版読取処理は現状残っているが、将来の互換性を要件とはしない。
 
 v3→v4では購入日をNULL許可へ変更する。既存行・書誌履歴・インデックス・トリガーを保持し、関連する外部キーと最新書誌ビューを再構築する。保存済みデータの全件再取得は不要。
+
+v4→v5はmetadata_runs・metadata_tasksを追加する。既存の書誌は成功済みとしてスキップでき、過去分の取得履歴を捏造しない。attemptsはINTEGER、reason・filenameはNULLを許可する。options・missing_fieldsはjson_valid制約を持つTEXT。
 
 ### 書誌JSON内に保持する項目
 
