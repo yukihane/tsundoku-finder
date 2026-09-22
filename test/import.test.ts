@@ -4,12 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
+import { importKindleCollection } from "../src/kindle/import.js";
 import { purchasesUrl } from "../src/kindle/purchases.js";
-import {
-	importKindleCollection,
-	librarySummary,
-	readLibrary,
-} from "../src/library/database.js";
+import { librarySummary, readLibrary } from "../src/library/database.js";
 import { getBook, searchBooks } from "../src/library/queries.js";
 import { importMetadata, metadataSummary } from "../src/metadata/import.js";
 import { legacySchema } from "./legacy-database.js";

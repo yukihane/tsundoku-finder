@@ -60,9 +60,7 @@ library searchは--publisher "出版社名"でも絞り込めます。
 	args[2]
 ) {
 	try {
-		const { importBookwalkerSample } = await import(
-			"./bookwalker/purchases.js"
-		);
+		const { importBookwalkerSample } = await import("./bookwalker/import.js");
 		console.log(JSON.stringify(await importBookwalkerSample(args[2]), null, 2));
 	} catch {
 		console.error(
@@ -155,7 +153,7 @@ library searchは--publisher "出版社名"でも絞り込めます。
 	args[2]
 ) {
 	try {
-		const { importKindleCollection } = await import("./library/database.js");
+		const { importKindleCollection } = await import("./kindle/import.js");
 		const result = await importKindleCollection(args[2]);
 		console.log(
 			result.alreadyImported

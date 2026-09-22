@@ -8,13 +8,13 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { importOwnership, readLibrary } from "../src/library/database.js";
-import type { OwnershipImport, Store } from "../src/library/ownership.js";
+import type { OwnershipImport } from "../src/library/ownership.js";
 import { getBook, searchBooks } from "../src/library/queries.js";
 import { legacySchema } from "./legacy-database.js";
 
 const uuid = "00000000-0000-4000-8000-000000000001";
 function input(
-	store: Store = "bookwalker-jp",
+	store: string = "bookwalker-jp",
 	day = "22",
 	title = "架空の書籍",
 ): OwnershipImport {

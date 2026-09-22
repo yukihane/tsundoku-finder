@@ -4,6 +4,24 @@ export const bookwalkerAdapter: StoreAdapter = {
 	id: "bookwalker-jp",
 	command: "bookwalker",
 	metadataScope: "bookwalker-metadata-sample",
+	validateOwnership(input) {
+		if (
+			input.coverage.scope !== "bookwalker-holdbooks" ||
+			input.coverage.status !== "partial"
+		)
+			throw new Error("Invalid bookwalker coverage");
+		for (const book of input.books) {
+			const e = book.evidence;
+			if (
+				e.source !== "https://bookwalker.jp/holdBooks/" ||
+				e.kind !== "bookwalker-holdbooks" ||
+				e.category !== null ||
+				e.filter !== null ||
+				e.pageNumber !== 1
+			)
+				throw new Error("Invalid bookwalker ownership evidence");
+		}
+	},
 	isProductId: (id) =>
 		/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id),
 	productUrl: (id) => `https://bookwalker.jp/de${id}/`,

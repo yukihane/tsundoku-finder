@@ -1,3 +1,4 @@
+import { type StoreRegistry, stores } from "../stores/registry.js";
 import { libraryPath, readLibrary } from "./database.js";
 import { validateBookId } from "./ownership.js";
 
@@ -85,8 +86,9 @@ export function getBook(
 	productId: string,
 	store = "kindle-jp",
 	dbPath = libraryPath,
+	registry: StoreRegistry = stores,
 ): BookDetail | null {
-	validateBookId(store, productId);
+	validateBookId(store, productId, registry);
 	return readLibrary(dbPath, (db) => {
 		const book = db
 			.prepare(

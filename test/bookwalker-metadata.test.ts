@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { chromium } from "playwright";
 import { bookwalkerAdapter } from "../src/bookwalker/adapter.js";
 import { readBookwalkerMetadata } from "../src/bookwalker/metadata.js";
 import { importOwnership } from "../src/library/database.js";
+import type { OwnershipImport } from "../src/library/ownership.js";
 import { getBook, searchBooks } from "../src/library/queries.js";
 import { importMetadata, validateMetadata } from "../src/metadata/import.js";
 import { createStoreRegistry } from "../src/stores/registry.js";
@@ -136,7 +136,7 @@ test("BOOKWALKER metadata isolates product fields and flows through shared stora
 	}
 });
 
-test("a registered third metadata adapter uses common validation and SQL without store branches", async () => {
+test("a registered third adapter imports ownership and metadata through shared storage and queries", async () => {
 	const adapter = {
 		...bookwalkerAdapter,
 		id: "fictional-store",
@@ -145,6 +145,24 @@ test("a registered third metadata adapter uses common validation and SQL without
 		isProductId: (value: string) => value === "SKU-123",
 		productUrl: (value: string) => `https://example.invalid/${value}`,
 		validateMetadataFormat: () => {},
+		validateOwnership(input: OwnershipImport) {
+			if (
+				input.coverage.scope !== "fictional-library" ||
+				input.coverage.status !== "complete"
+			)
+				throw new Error("Invalid coverage");
+			for (const b of input.books) {
+				const e = b.evidence;
+				if (
+					e.source !== "https://example.invalid/library" ||
+					e.kind !== "fictional-purchase" ||
+					e.category !== null ||
+					e.filter !== "owned" ||
+					e.display?.accountType !== "personal"
+				)
+					throw new Error("Invalid evidence");
+			}
+		},
 	};
 	const registry = createStoreRegistry([adapter]);
 	assert.throws(() => createStoreRegistry([adapter, adapter]));
@@ -169,36 +187,121 @@ test("a registered third metadata adapter uses common validation and SQL without
 	assert.throws(() => validateMetadata(value));
 	const dir = await mkdtemp(join(tmpdir(), "tsundoku-adapter-"));
 	const dbPath = join(dir, "library.sqlite");
-	// Owned input remains separately constrained: seed this fictional ownership in SQL for this metadata-only test.
-	const { initialize } = await import("../src/library/database.js");
-	const db = new DatabaseSync(dbPath);
-	db.exec("BEGIN");
-	initialize(db);
-	db.prepare("INSERT INTO imports VALUES (?,?,?,?,?,?,?)").run(
-		"fictional",
-		adapter.id,
-		stamp,
-		stamp,
-		stamp,
+	const ownership: OwnershipImport = {
+		id: "f".repeat(64),
+		store: adapter.id,
+		startedAt: stamp,
+		completedAt: stamp,
+		coverage: { status: "complete", scope: "fictional-library" },
+		books: [
+			{
+				productId: "SKU-123",
+				title: "所有商品",
+				authorsText: "著者",
+				acquiredDateText: "2026/09/22",
+				productUrl: value.source,
+				evidence: {
+					source: "https://example.invalid/library",
+					capturedAt: stamp,
+					pageNumber: 1,
+					kind: "fictional-purchase",
+					category: null,
+					filter: "owned",
+					display: { accountType: "personal" },
+				},
+			},
+		],
+	};
+	const book = ownership.books[0];
+	assert.ok(book);
+	for (const invalid of [
+		{ ...ownership, store: "unknown" },
+		{
+			...ownership,
+			coverage: { ...ownership.coverage, status: "partial" as const },
+		},
+		{
+			...ownership,
+			coverage: { ...ownership.coverage, scope: "bookwalker-holdbooks" },
+		},
+		{
+			...ownership,
+			books: [{ ...book, productUrl: "https://example.invalid/wrong" }],
+		},
+		{ ...ownership, books: [{ ...book, productId: "BAD" }] },
+		{
+			...ownership,
+			books: [
+				{
+					...book,
+					evidence: {
+						...book.evidence,
+						source: "https://example.invalid/not-owned",
+					},
+				},
+			],
+		},
+		{
+			...ownership,
+			books: [
+				{
+					...book,
+					evidence: { ...book.evidence, kind: "bookwalker-holdbooks" },
+				},
+			],
+		},
+		{
+			...ownership,
+			books: [
+				{
+					...book,
+					evidence: { ...book.evidence, display: { accountType: "unknown" } },
+				},
+			],
+		},
+		{ ...ownership, books: [book, book] },
+	]) {
+		await assert.rejects(importOwnership(invalid, dbPath, registry));
+		await assert.rejects(access(dbPath));
+	}
+	await assert.rejects(importOwnership(ownership, dbPath));
+	await assert.rejects(access(dbPath));
+	assert.equal(
+		(await importOwnership(ownership, dbPath, registry)).imported,
 		1,
-		"{}",
 	);
-	db.prepare("INSERT INTO books VALUES (?,?,?,?,?,?,?,?,?,?)").run(
-		adapter.id,
-		"SKU-123",
-		"所有商品",
-		"著者",
-		"日付",
-		value.source,
-		"purchased",
-		stamp,
-		stamp,
-		"fictional",
+	assert.equal(
+		(await importOwnership(ownership, dbPath, registry)).alreadyImported,
+		true,
 	);
-	db.exec("COMMIT");
-	db.close();
+	assert.equal(searchBooks("所有商品", 20, 0, dbPath).total, 1);
+	const owned = getBook("SKU-123", adapter.id, dbPath, registry);
+	assert.ok(owned?.ownershipEvidence);
+	assert.deepEqual(
+		(owned.ownershipEvidence.details as { display: unknown }).display,
+		{ accountType: "personal" },
+	);
+	assert.throws(() => getBook("SKU-123", adapter.id, dbPath));
+	assert.throws(() => getBook("BAD", adapter.id, dbPath, registry));
+	const before = await readFile(dbPath);
+	await assert.rejects(
+		importOwnership(
+			{ ...ownership, id: "e".repeat(64), books: [{ ...book, title: "競合" }] },
+			dbPath,
+			registry,
+		),
+	);
+	assert.deepEqual(await readFile(dbPath), before);
 	const file = join(dir, "metadata.json");
 	await writeFile(file, JSON.stringify(value));
 	await importMetadata(file, dbPath, registry);
 	assert.equal(searchBooks("第三ストア説明", 20, 0, dbPath).total, 1);
+	assert.deepEqual(
+		getBook("SKU-123", adapter.id, dbPath, registry)?.metadata,
+		validateMetadata(value, registry),
+	);
+	assert.deepEqual(
+		getBook("SKU-123", adapter.id, dbPath, registry)?.ownershipEvidence,
+		owned?.ownershipEvidence,
+	);
 });

@@ -7,10 +7,10 @@ import { chromium } from "playwright";
 import {
 	importBookwalkerSample,
 	purchasesUrl,
-	readPurchasePage,
 	validateLimit,
 	validateSample,
-} from "../src/bookwalker/purchases.js";
+} from "../src/bookwalker/import.js";
+import { readPurchasePage } from "../src/bookwalker/purchases.js";
 import { getBook, searchBooks } from "../src/library/queries.js";
 
 const id = (n: number) =>

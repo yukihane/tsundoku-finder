@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
+import { type StoreRegistry, stores } from "../stores/registry.js";
 import { type OwnershipImport, validateOwnership } from "./ownership.js";
 
 export const libraryPath = fileURLToPath(
@@ -191,23 +192,12 @@ function storeImport(db: DatabaseSync, input: OwnershipImport) {
 	}
 }
 
-export async function importKindleCollection(
-	directory: string,
-	dbPath = libraryPath,
-) {
-	const { readKindleImport } = await import("../kindle/import-data.js");
-	const { kindleOwnership } = await import("../kindle/ownership.js");
-	return importOwnership(
-		kindleOwnership(await readKindleImport(directory)),
-		dbPath,
-	);
-}
-
 export async function importOwnership(
 	input: OwnershipImport,
 	dbPath = libraryPath,
+	registry: StoreRegistry = stores,
 ) {
-	validateOwnership(input);
+	validateOwnership(input, registry);
 	// Snapshot before the first await so callers cannot mutate validated input while opening the DB.
 	const validated = structuredClone(input);
 	await mkdir(dirname(dbPath), { recursive: true });

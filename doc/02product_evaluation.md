@@ -487,3 +487,16 @@ DOMでは各商品の`.digital_entity_details`内に`content-read-badge`が表�
 - 実蔵書DBの検証前後のSHA-256は一致した。取得JSON、認証プロファイル、隔離DB、検証スクリプトはすべてGit対象外の.local/に保持した。
 
 出典: [購入済み一覧](https://bookwalker.jp/holdBooks/)とサンプル1冊の商品ページ（個別URLはローカルの取得JSONに保持）。実行記録は.local/bookwalker-e2e-gxM7hs/result.json。実サイト検証はCLIと同じ取得・取り込み・検索関数を呼び出したもので、CLI経由で実蔵書DBへ取り込む検証はしていない。年齢確認が必要な商品、他のページ形式、空一覧・全件巡回は未確認。pnpm checkは整形・lint・型検査・25件のテスト・ビルドを通過した。
+
+
+## 22. 所有情報のアダプター分離と第3ストア検証
+
+2026-09-22。共通所有入力のストアID・scope・根拠kindの2ストア限定型と、共通検証内のKindle／BOOK☆WALKER分岐を除去した。文字列を自由に受け付けるのではなく、登録済みStoreAdapterの検証を必須とし、不明ストアはDBを開く前に拒否する。
+
+- 各アダプターが取得範囲・出典・所有根拠を検証する。Kindleはcompleteと購入済み分類、BOOK☆WALKERはpartialと先頭ページの条件を維持する。商品ID・商品URLの判定にも同じ登録表を使う。
+- 共通処理は日時・文字列・件数・重複・正のページ番号を検証し、既存の保存SQLへ渡す。ストア別の追加根拠はdetails.displayに保持する。DBスキーマと取得JSON形式は変更していない。
+- Kindleの取り込み入口をkindle/import.tsへ移動し、BOOK☆WALKERのファイル検証・取り込みをbookwalker/import.tsへ分離した。共通DBモジュールはストア固有のファイル読み取りを呼ばず、オフライン取り込みはPlaywrightの実行モジュールを読み込まない。
+- 架空の第3ストアを独立した登録表へ追加し、共通importOwnershipでDBを作成した。所有情報のSQL直接投入をやめ、書誌取り込み・語句検索・詳細取得・独自の追加根拠の保存を確認した。未知ストア、不正なID・商品URL・出典・根拠kind・取得範囲・追加根拠・重複商品はDB作成前に拒否された。同時刻競合でDB不変、再取り込みで重複しないことも確認した。
+- pnpm checkで整形・lint・型検査・25件のテスト・ビルドを確認した。既存2ストアの取り込み、古い観測の保持、失敗時のロールバックも通過した。実サイトへのアクセス・追加取得・実蔵書DBの更新は行っていない。
+
+根拠: src/stores/types.ts、各ストアのadapter.ts、src/library/ownership.ts、test/bookwalker-metadata.test.ts。この検証は共通入力からの接続確認であり、未知の実ストアの画面取得が実装なしで動く意味ではない。新ストアには取得・ファイル検証／変換とCLI接続が必要。購入日・ページ番号の必須性やpurchased以外の利用権は今回変更していない。

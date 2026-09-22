@@ -1,35 +1,25 @@
-import { stores } from "../stores/registry.js";
-export type Store = "kindle-jp" | "bookwalker-jp";
-
-export interface OwnershipDisplay {
-	heading: string;
-	rangeText: string;
-	rowCount: number;
-	ungrouped: boolean;
-	searchText: string;
-	filters: {
-		category: string;
-		label: string;
-		publisher: string;
-		reading: string;
-		age: string;
-	};
-}
-
-export function validateBookId(store: string, productId: string): void {
-	if (!stores.get(store).isProductId(productId))
+import { type StoreRegistry, stores } from "../stores/registry.js";
+export function validateBookId(
+	store: string,
+	productId: string,
+	registry: StoreRegistry = stores,
+): void {
+	if (
+		typeof productId !== "string" ||
+		!registry.get(store).isProductId(productId)
+	)
 		throw new Error("Invalid book identifier");
 }
 
 // Internal input only. Store adapters must validate the original files first.
 export interface OwnershipImport {
 	id: string;
-	store: Store;
+	store: string;
 	startedAt: string;
 	completedAt: string;
 	coverage: {
 		status: "partial" | "complete";
-		scope: "kindle-purchased-list" | "bookwalker-holdbooks";
+		scope: string;
 	};
 	books: Array<{
 		productId: string;
@@ -41,10 +31,10 @@ export interface OwnershipImport {
 			source: string;
 			capturedAt: string;
 			pageNumber: number;
-			kind: "amazon-content-filter" | "bookwalker-holdbooks";
+			kind: string;
 			category: string | null;
 			filter: string | null;
-			display?: OwnershipDisplay;
+			display?: Record<string, unknown>;
 		};
 	}>;
 }
@@ -57,8 +47,11 @@ function timestamp(value: string): boolean {
 	);
 }
 
-export function validateOwnership(input: OwnershipImport): void {
-	const kindle = input.store === "kindle-jp";
+export function validateOwnership(
+	input: OwnershipImport,
+	registry: StoreRegistry = stores,
+): void {
+	const adapter = registry.get(input.store);
 	if (
 		!/^[a-f0-9]{64}$/.test(input.id) ||
 		!timestamp(input.startedAt) ||
@@ -67,24 +60,18 @@ export function validateOwnership(input: OwnershipImport): void {
 		!Array.isArray(input.books) ||
 		input.books.length < 1 ||
 		input.books.length > 25000 ||
-		input.coverage.scope !==
-			(kindle ? "kindle-purchased-list" : "bookwalker-holdbooks") ||
-		input.coverage.status !== (kindle ? "complete" : "partial")
+		typeof input.coverage.scope !== "string" ||
+		!input.coverage.scope.trim() ||
+		!["partial", "complete"].includes(input.coverage.status)
 	)
 		throw new Error("Invalid ownership import");
 	const seen = new Set<string>();
 	for (const book of input.books) {
-		validateBookId(input.store, book.productId);
+		validateBookId(input.store, book.productId, registry);
 		const e = book.evidence;
-		const productUrl = kindle
-			? `https://www.amazon.co.jp/dp/${book.productId}`
-			: `https://bookwalker.jp/de${book.productId}/`;
-		const source = kindle
-			? `https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksPurchases/dateDsc${e.pageNumber === 1 ? "" : `?pageNumber=${e.pageNumber}`}`
-			: "https://bookwalker.jp/holdBooks/";
 		if (
 			seen.has(book.productId) ||
-			book.productUrl !== productUrl ||
+			book.productUrl !== adapter.productUrl(book.productId) ||
 			![book.title, book.acquiredDateText].every(
 				(v) => typeof v === "string" && v.trim() && v.length <= 100000,
 			) ||
@@ -95,12 +82,15 @@ export function validateOwnership(input: OwnershipImport): void {
 			e.capturedAt > input.completedAt ||
 			!Number.isSafeInteger(e.pageNumber) ||
 			e.pageNumber < 1 ||
-			e.source !== source ||
-			e.kind !== (kindle ? "amazon-content-filter" : "bookwalker-holdbooks") ||
-			e.category !== (kindle ? "本" : null) ||
-			e.filter !== (kindle ? "購入済み" : null)
+			![e.source, e.kind].every(
+				(v) => typeof v === "string" && v.trim() && v.length <= 100000,
+			) ||
+			![e.category, e.filter].every(
+				(v) => v === null || (typeof v === "string" && v.length <= 100000),
+			)
 		)
 			throw new Error("Invalid ownership book");
 		seen.add(book.productId);
 	}
+	adapter.validateOwnership(input);
 }
