@@ -32,6 +32,8 @@ export function searchBooks(
       coalesce(json_extract(m.document, '$.title'), '') || char(10) ||
       coalesce(json_extract(m.document, '$.authorsText'), '') || char(10) ||
       coalesce(json_extract(m.document, '$.publisher'), '') || char(10) ||
+      coalesce(json_extract(m.document, '$.label'), '') || char(10) ||
+      coalesce((SELECT group_concat(value, char(10)) FROM json_each(m.document, '$.genres')), '') || char(10) ||
       coalesce(json_extract(m.document, '$.description'), '') || char(10) ||
       coalesce(json_extract(m.document, '$.series.text'), '') || char(10) ||
       coalesce((SELECT group_concat(value, char(10)) FROM json_each(m.document, '$.categories')), '')

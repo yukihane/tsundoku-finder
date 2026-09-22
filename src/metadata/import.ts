@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
 import { initialize, libraryPath, readLibrary } from "../library/database.js";
+import { type StoreRegistry, stores } from "../stores/registry.js";
 
 function object(value: unknown): Record<string, unknown> {
 	if (!value || typeof value !== "object" || Array.isArray(value))
@@ -14,29 +15,28 @@ function text(value: unknown, nullable = false): string | null {
 		throw new Error("Invalid metadata text");
 	return value;
 }
-export function validateMetadata(input: unknown) {
+export function validateMetadata(
+	input: unknown,
+	registry: StoreRegistry = stores,
+) {
 	const value = object(input);
-	if (
-		value.schemaVersion !== 1 ||
-		value.scope !== "kindle-metadata-sample" ||
-		value.store !== "kindle-jp"
-	)
+	const adapter = registry.get(String(value.store));
+	if (value.schemaVersion !== 1 || value.scope !== adapter.metadataScope)
 		throw new Error("Unknown metadata format");
+	adapter.validateMetadataFormat(value);
 	const productId = text(value.productId);
 	const capturedAt = text(value.capturedAt);
 	if (
 		!productId ||
-		!/^[A-Z0-9]{10}$/.test(productId) ||
+		!adapter.isProductId(productId) ||
 		!capturedAt ||
 		!Number.isFinite(Date.parse(capturedAt)) ||
 		new Date(capturedAt).toISOString() !== capturedAt ||
-		value.source !== `https://www.amazon.co.jp/dp/${productId}`
+		value.source !== adapter.productUrl(productId)
 	)
 		throw new Error("Invalid metadata identity");
 	const title = text(value.title);
 	const authorsText = text(value.authorsText);
-	if (!/形式\s*:\s*Kindle版/.test(authorsText ?? ""))
-		throw new Error("Not Kindle metadata");
 	const publisher = text(value.publisher, true);
 	const description = text(value.description, true);
 	const publicationDateText = text(value.publicationDateText, true);
@@ -46,10 +46,7 @@ export function validateMetadata(input: unknown) {
 	let series: { text: string | null; url: string } | null = null;
 	if (value.series !== null) {
 		const item = object(value.series);
-		if (
-			typeof item.url !== "string" ||
-			!/^https:\/\/www\.amazon\.co\.jp\/dp\/[A-Z0-9]{10}$/.test(item.url)
-		)
+		if (typeof item.url !== "string" || !adapter.isSeriesUrl(item.url))
 			throw new Error("Invalid series URL");
 		series = { text: text(item.text), url: item.url };
 	}
@@ -63,8 +60,8 @@ export function validateMetadata(input: unknown) {
 		throw new Error("Inconsistent missing fields");
 	return {
 		schemaVersion: 1,
-		scope: "kindle-metadata-sample",
-		store: "kindle-jp",
+		scope: adapter.metadataScope,
+		store: adapter.id,
 		productId,
 		source: value.source,
 		capturedAt,
@@ -76,13 +73,31 @@ export function validateMetadata(input: unknown) {
 		categories,
 		series,
 		missingFields,
+		...(value.label !== undefined ? { label: text(value.label, true) } : {}),
+		...(value.distributionDateText !== undefined
+			? { distributionDateText: text(value.distributionDateText, true) }
+			: {}),
+		...(value.genres !== undefined ? { genres: stringList(value.genres) } : {}),
 	};
 }
 
-export async function importMetadata(filename: string, dbPath = libraryPath) {
+function stringList(value: unknown) {
+	if (!Array.isArray(value) || value.length > 100)
+		throw new Error("Invalid list");
+	return value.map((item) => text(item));
+}
+
+export async function importMetadata(
+	filename: string,
+	dbPath = libraryPath,
+	registry: StoreRegistry = stores,
+) {
 	if ((await stat(filename)).size > 1000000)
 		throw new Error("Metadata file too large");
-	const data = validateMetadata(JSON.parse(await readFile(filename, "utf8")));
+	const data = validateMetadata(
+		JSON.parse(await readFile(filename, "utf8")),
+		registry,
+	);
 	const document = JSON.stringify(data);
 	const id = createHash("sha256").update(document).digest("hex");
 	// Verify existing database without creating or migrating anything first.

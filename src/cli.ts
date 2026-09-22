@@ -13,6 +13,7 @@ if (
         pnpm dev kindle sample [--limit 1〜50]
         pnpm dev kindle reading-sample [--limit 1〜25]
         pnpm dev metadata kindle <所有ASIN>
+        pnpm dev metadata bookwalker <所有UUID>
         pnpm dev metadata import <保存済みJSON>
         pnpm dev metadata summary
         pnpm dev kindle purchases [--limit 1〜25]
@@ -89,18 +90,13 @@ library searchは--publisher "出版社名"でも絞り込めます。
 		);
 		process.exitCode = 1;
 	}
-} else if (
-	args.length === 3 &&
-	args[0] === "metadata" &&
-	args[1] === "kindle" &&
-	args[2]
-) {
+} else if (args.length === 3 && args[0] === "metadata" && args[1] && args[2]) {
 	try {
-		const { captureKindleMetadata } = await import("./metadata/kindle.js");
-		await captureKindleMetadata(args[2]);
+		const { captureMetadata } = await import("./metadata/capture.js");
+		await captureMetadata(args[1], args[2]);
 	} catch {
 		console.error(
-			"書誌情報を取得できませんでした。所有ASIN・DB・商品ページの表示を確認してください。DBは更新していません。",
+			"書誌情報を取得できませんでした。ストア・所有商品ID・DB・商品ページの表示を確認してください。DBは更新していません。",
 		);
 		process.exitCode = 1;
 	}

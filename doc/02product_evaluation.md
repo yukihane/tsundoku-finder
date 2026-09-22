@@ -461,3 +461,15 @@ DOMでは各商品の`.digital_entity_details`内に`content-read-badge`が表�
 - DBへ購入日NULLまたはownership=subscriptionを設定する操作は制約で拒否された。隔離DBの外部キー違反は0件。
 
 根拠: [共通入力・検証](../src/library/ownership.ts)、[保存SQL・入口](../src/library/database.ts)、[書誌検証・保存](../src/metadata/import.ts)、[検索・詳細](../src/library/queries.ts)、[BOOK☆WALKER処理](../src/bookwalker/purchases.ts)、[CLI](../src/cli.ts)。改善案は検討メモ第13節に記録し、未採用の案を設計書へ反映しない。
+
+## 20. BOOK☆WALKER書誌補完とアダプター化の検証
+
+2026-09-22。第19節で未対応だったBOOK☆WALKER書誌の取得・共通取り込み・検索を実装した。商品ID・商品URL・シリーズURL・書誌形式の固有検証とページ抽出をストア別アダプターへ分離し、書誌の共通保存処理へ登録する形とした。所有情報の完了条件・取得根拠の分岐は残っており、全面的なプラグイン化ではない。
+
+既存サンプル1冊の商品ページをChromeで再確認し、作品情報の定義リスト、対象商品用紹介文、ジャンル領域を観測した。紹介文だけを展開し、本文・試し読みは開いていない。個別URLはGit対象外の既存product-sample-1.jsonを参照し、本書には転記しない。今回保存した対象範囲のDOMは`.local/bookwalker/metadata-dom.html`に保持した。
+
+- 実DOMをネットワークへ接続しない模擬応答として再生し、実装した抽出器で書名・著者・出版社・紹介文・レーベル・配信開始日・シリーズ、カテゴリ1件・ジャンル4件を取得できた。これは保存DOMの再解析で、新規取得文書としてDBへ登録していない。集計結果は`.local/bookwalker/metadata-replay-result.json`。
+- 架空データのテストでは紹介文・出版社・シリーズ・レーベル・ジャンル検索、未所有拒否、出典不一致拒否、重複項目拒否、同時刻競合のロールバック、再取り込み抑止、最新文書の欠損を過去から補わない動作を確認した。
+- 架空の第3書誌アダプターを独立した登録表へ追加し、共通の検証・書誌取り込み・検索が変更なしで動作した。ただし架空商品の所有行はテスト用SQLで投入したものであり、第3ストアの所有取り込み対応を意味しない。
+
+実蔵書DBは未変更。新CLIによる未ログインの実サイト取得一式、年齢確認が必要な商品、1冊以外のDOM形式は未確認。全書籍の追加取得は行っていない。テストはtest/bookwalker-metadata.test.ts、再生スクリプトはGit対象外の.local/replay-bookwalker-metadata.mjs。

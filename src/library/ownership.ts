@@ -1,3 +1,4 @@
+import { stores } from "../stores/registry.js";
 export type Store = "kindle-jp" | "bookwalker-jp";
 
 export interface OwnershipDisplay {
@@ -16,14 +17,8 @@ export interface OwnershipDisplay {
 }
 
 export function validateBookId(store: string, productId: string): void {
-	const valid =
-		store === "kindle-jp"
-			? /^[A-Z0-9]{10}$/.test(productId)
-			: store === "bookwalker-jp" &&
-				/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
-					productId,
-				);
-	if (!valid) throw new Error("Invalid book identifier");
+	if (!stores.get(store).isProductId(productId))
+		throw new Error("Invalid book identifier");
 }
 
 // Internal input only. Store adapters must validate the original files first.
