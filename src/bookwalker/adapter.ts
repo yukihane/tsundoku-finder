@@ -13,6 +13,7 @@ export const bookwalkerAdapter: StoreAdapter = {
 		for (const book of input.books) {
 			const e = book.evidence;
 			if (
+				book.acquiredDateText === null ||
 				e.source !== "https://bookwalker.jp/holdBooks/" ||
 				e.kind !== "bookwalker-holdbooks" ||
 				e.category !== null ||

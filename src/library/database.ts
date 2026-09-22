@@ -13,7 +13,52 @@ const applicationId = 0x54534e44;
 export function initialize(db: DatabaseSync): void {
 	const version = db.prepare("PRAGMA user_version").get()?.user_version;
 	const app = db.prepare("PRAGMA application_id").get()?.application_id;
-	if (version === 3 && app === applicationId) return;
+	if (version === 4 && app === applicationId) return;
+	if (version === 3 && app === applicationId) {
+		const schemaObjects = db
+			.prepare(
+				"SELECT sql FROM sqlite_master WHERE type IN ('index', 'trigger') AND tbl_name IN ('books', 'ownership_evidence', 'metadata_snapshots') AND sql IS NOT NULL",
+			)
+			.all();
+		db.exec(`
+      DROP VIEW latest_metadata;
+      CREATE TABLE books_v4 (
+        store TEXT NOT NULL, product_id TEXT NOT NULL, title TEXT NOT NULL,
+        authors_text TEXT NOT NULL, acquired_date_text TEXT, product_url TEXT NOT NULL,
+        ownership TEXT NOT NULL CHECK(ownership = 'purchased'),
+        first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL,
+        latest_import_id TEXT NOT NULL REFERENCES imports(id), PRIMARY KEY(store, product_id)
+      ) STRICT;
+      INSERT INTO books_v4 SELECT * FROM books;
+      CREATE TABLE ownership_evidence_v4 (
+        import_id TEXT NOT NULL REFERENCES imports(id), store TEXT NOT NULL, product_id TEXT NOT NULL,
+        page_number INTEGER NOT NULL, source TEXT NOT NULL, captured_at TEXT NOT NULL,
+        category TEXT, filter TEXT, kind TEXT NOT NULL,
+        details TEXT NOT NULL CHECK(json_valid(details)), PRIMARY KEY(import_id, store, product_id),
+        FOREIGN KEY(store, product_id) REFERENCES books_v4(store, product_id)
+      ) STRICT;
+      INSERT INTO ownership_evidence_v4 SELECT * FROM ownership_evidence;
+      CREATE TABLE metadata_snapshots_v4 (
+        id TEXT PRIMARY KEY, store TEXT NOT NULL, product_id TEXT NOT NULL,
+        captured_at TEXT NOT NULL, document TEXT NOT NULL CHECK(json_valid(document)),
+        UNIQUE(store, product_id, captured_at),
+        FOREIGN KEY(store, product_id) REFERENCES books_v4(store, product_id)
+      ) STRICT;
+      INSERT INTO metadata_snapshots_v4 SELECT * FROM metadata_snapshots;
+      DROP TABLE ownership_evidence;
+      DROP TABLE metadata_snapshots;
+      DROP TABLE books;
+      ALTER TABLE books_v4 RENAME TO books;
+      ALTER TABLE ownership_evidence_v4 RENAME TO ownership_evidence;
+      ALTER TABLE metadata_snapshots_v4 RENAME TO metadata_snapshots;
+      CREATE VIEW latest_metadata AS SELECT m.* FROM metadata_snapshots m
+        WHERE NOT EXISTS (SELECT 1 FROM metadata_snapshots newer
+          WHERE newer.store = m.store AND newer.product_id = m.product_id AND newer.captured_at > m.captured_at);
+      PRAGMA user_version = 4;
+    `);
+		for (const item of schemaObjects) db.exec(String(item.sql));
+		return;
+	}
 	if (version === 2 && app === applicationId) {
 		db.exec(`ALTER TABLE imports ADD COLUMN coverage TEXT CHECK(coverage IS NULL OR json_valid(coverage));
       CREATE TABLE ownership_evidence_v3 (
@@ -28,6 +73,7 @@ export function initialize(db: DatabaseSync): void {
       DROP TABLE ownership_evidence;
       ALTER TABLE ownership_evidence_v3 RENAME TO ownership_evidence;
       PRAGMA user_version = 3;`);
+		initialize(db);
 		return;
 	}
 	if (version === 1 && app === applicationId) {
@@ -221,7 +267,7 @@ export function readLibrary<T>(
 		if (
 			db.prepare("PRAGMA application_id").get()?.application_id !==
 				applicationId ||
-			![1, 2, 3].includes(
+			![1, 2, 3, 4].includes(
 				Number(db.prepare("PRAGMA user_version").get()?.user_version),
 			)
 		)

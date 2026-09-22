@@ -1,4 +1,5 @@
 import { bookwalkerAdapter } from "../bookwalker/adapter.js";
+import { dmmAdapter } from "../dmm/adapter.js";
 import { kindleAdapter } from "../kindle/adapter.js";
 import type { StoreAdapter } from "./types.js";
 
@@ -29,5 +30,9 @@ export function createStoreRegistry(adapters: readonly StoreAdapter[]) {
 		},
 	};
 }
-export const stores = createStoreRegistry([kindleAdapter, bookwalkerAdapter]);
+export const stores = createStoreRegistry([
+	kindleAdapter,
+	bookwalkerAdapter,
+	dmmAdapter,
+]);
 export type StoreRegistry = ReturnType<typeof createStoreRegistry>;

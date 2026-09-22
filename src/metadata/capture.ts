@@ -15,7 +15,9 @@ export async function captureMetadata(
 	if (!adapter.isProductId(productId)) throw new Error("Invalid product ID");
 	const owned = readLibrary(dbPath, (db) =>
 		db
-			.prepare("SELECT 1 FROM books WHERE store = ? AND product_id = ?")
+			.prepare(
+				"SELECT product_url FROM books WHERE store = ? AND product_id = ?",
+			)
 			.get(adapter.id, productId),
 	);
 	if (!owned) throw new Error("Book is not in the owned library");
@@ -27,16 +29,23 @@ export async function captureMetadata(
 	process.once("SIGTERM", close);
 	try {
 		const page = await browser.newPage({ locale: "ja-JP" });
-		const response = await page.goto(adapter.productUrl(productId), {
-			waitUntil: "domcontentloaded",
-			timeout: 60000,
-		});
+		const response = await page.goto(
+			adapter.productUrl(productId, String(owned.product_url)),
+			{
+				waitUntil: "domcontentloaded",
+				timeout: 60000,
+			},
+		);
 		if (!response?.ok()) throw new Error("Product request failed");
 		await adapter.waitForMetadata(page);
 		const report = validateMetadata(
 			await adapter.readMetadata(page, productId),
 		);
-		if (report.store !== adapter.id || report.productId !== productId)
+		if (
+			report.store !== adapter.id ||
+			report.productId !== productId ||
+			report.source !== owned.product_url
+		)
 			throw new Error("Unexpected metadata identity");
 		const directory = fileURLToPath(
 			new URL(`../../.local/metadata/${adapter.command}/`, import.meta.url),

@@ -13,6 +13,7 @@ export const kindleAdapter: StoreAdapter = {
 		for (const book of input.books) {
 			const e = book.evidence;
 			if (
+				book.acquiredDateText === null ||
 				e.source !==
 					`https://www.amazon.co.jp/hz/mycd/digital-console/contentlist/booksPurchases/dateDsc${e.pageNumber === 1 ? "" : `?pageNumber=${e.pageNumber}`}` ||
 				e.kind !== "amazon-content-filter" ||

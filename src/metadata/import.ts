@@ -32,7 +32,7 @@ export function validateMetadata(
 		!capturedAt ||
 		!Number.isFinite(Date.parse(capturedAt)) ||
 		new Date(capturedAt).toISOString() !== capturedAt ||
-		value.source !== adapter.productUrl(productId)
+		value.source !== adapter.productUrl(productId, String(value.source))
 	)
 		throw new Error("Invalid metadata identity");
 	const title = text(value.title);
@@ -110,12 +110,13 @@ export async function importMetadata(
 		db.exec("BEGIN IMMEDIATE");
 		try {
 			initialize(db);
-			if (
-				!db
-					.prepare("SELECT 1 FROM books WHERE store = ? AND product_id = ?")
-					.get(data.store, data.productId)
-			)
-				throw new Error("Unowned book");
+			const owned = db
+				.prepare(
+					"SELECT product_url FROM books WHERE store = ? AND product_id = ?",
+				)
+				.get(data.store, data.productId);
+			if (!owned || owned.product_url !== data.source)
+				throw new Error("Unowned book or mismatched product URL");
 			if (
 				db.prepare("SELECT id FROM metadata_snapshots WHERE id = ?").get(id)
 			) {

@@ -9,11 +9,14 @@ if (
 使い方: pnpm dev
         pnpm dev kindle login
         pnpm dev bookwalker purchases [--limit 1〜25]
+        pnpm dev dmm purchases [--limit 1〜25]
+        pnpm dev library import-dmm <保存済みJSON>
         pnpm dev library import-bookwalker <保存済みJSON>
         pnpm dev kindle sample [--limit 1〜50]
         pnpm dev kindle reading-sample [--limit 1〜25]
         pnpm dev metadata kindle <所有ASIN>
         pnpm dev metadata bookwalker <所有UUID>
+        pnpm dev metadata dmm <所有コンテンツID>
         pnpm dev metadata import <保存済みJSON>
         pnpm dev metadata summary
         pnpm dev kindle purchases [--limit 1〜25]
@@ -21,7 +24,7 @@ if (
         pnpm dev library import-kindle <取得フォルダー>
         pnpm dev library summary
         pnpm dev library search "検索語" [--limit 1〜100] [--offset 0〜100000]
-        pnpm dev library get <商品ID> [--store kindle-jp|bookwalker-jp]
+        pnpm dev library get <商品ID> [--store kindle-jp|bookwalker-jp|dmm-books]
 
 購入済み電子書籍から次の一冊を探すツールです。
 kindle login: 専用ブラウザでログインし、認証状態をローカルに保持します。
@@ -32,6 +35,40 @@ library import-kindle: 完了済みの取得JSONをローカルSQLiteへ取り�
 library summary: DBの書籍数・取り込み数を表示します。
 library searchは--publisher "出版社名"でも絞り込めます。
 書誌情報の保存・検索に対応しています。読書状態のDB保存は未実装です。MCPの導入は保留しています。`);
+} else if (args[0] === "dmm" && args[1] === "purchases") {
+	try {
+		if (
+			!(
+				args.length === 2 ||
+				(args.length === 4 &&
+					args[2] === "--limit" &&
+					/^\d+$/.test(args[3] ?? ""))
+			)
+		)
+			throw new Error("Invalid arguments");
+		const { capturePurchasedSample } = await import("./dmm/purchases.js");
+		await capturePurchasedSample(args.length === 2 ? 25 : Number(args[3]));
+	} catch {
+		console.error(
+			"DMM取得に失敗しました。--limit（1〜25）、認証・本棚の先頭ページ・購入済み巻一覧・表示条件を確認してください。DBは更新していません。",
+		);
+		process.exitCode = 1;
+	}
+} else if (
+	args[0] === "library" &&
+	args[1] === "import-dmm" &&
+	args.length === 3 &&
+	args[2]
+) {
+	try {
+		const { importDmmSample } = await import("./dmm/import.js");
+		console.log(JSON.stringify(await importDmmSample(args[2]), null, 2));
+	} catch {
+		console.error(
+			"DMM取り込みに失敗しました。保存済みJSON・所有根拠・DBを確認してください。変更は確定していません。",
+		);
+		process.exitCode = 1;
+	}
 } else if (args[0] === "bookwalker" && args[1] === "purchases") {
 	try {
 		if (

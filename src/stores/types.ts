@@ -8,7 +8,8 @@ export interface StoreAdapter {
 	metadataScope: string;
 	validateOwnership(input: OwnershipImport): void;
 	isProductId(value: string): boolean;
-	productUrl(id: string): string;
+	// Some stores need an observed series route as well as the product ID.
+	productUrl(id: string, observedUrl?: string): string;
 	isSeriesUrl(value: string): boolean;
 	validateMetadataFormat(value: Record<string, unknown>): void;
 	readMetadata(page: Page, id: string): Promise<unknown>;

@@ -25,7 +25,7 @@ export interface OwnershipImport {
 		productId: string;
 		title: string;
 		authorsText: string;
-		acquiredDateText: string;
+		acquiredDateText: string | null;
 		productUrl: string;
 		evidence: {
 			source: string;
@@ -71,9 +71,15 @@ export function validateOwnership(
 		const e = book.evidence;
 		if (
 			seen.has(book.productId) ||
-			book.productUrl !== adapter.productUrl(book.productId) ||
-			![book.title, book.acquiredDateText].every(
+			book.productUrl !== adapter.productUrl(book.productId, book.productUrl) ||
+			![book.title].every(
 				(v) => typeof v === "string" && v.trim() && v.length <= 100000,
+			) ||
+			!(
+				book.acquiredDateText === null ||
+				(typeof book.acquiredDateText === "string" &&
+					book.acquiredDateText.trim() &&
+					book.acquiredDateText.length <= 100000)
 			) ||
 			typeof book.authorsText !== "string" ||
 			book.authorsText.length > 100000 ||

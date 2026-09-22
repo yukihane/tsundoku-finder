@@ -244,7 +244,7 @@ for (const version of [1, 2] as const) {
 		await importOwnership(input(), dbPath);
 		assert.equal((await importOwnership(kindle, dbPath)).alreadyImported, true);
 		readLibrary(dbPath, (db) => {
-			assert.equal(db.prepare("PRAGMA user_version").get()?.user_version, 3);
+			assert.equal(db.prepare("PRAGMA user_version").get()?.user_version, 4);
 			assert.deepEqual(
 				db.prepare("SELECT * FROM books WHERE store = 'kindle-jp'").all(),
 				books,
