@@ -46,6 +46,7 @@ export const bookwalkerAdapter: StoreAdapter = {
 		const button = page.locator('button[aria-controls="detail-synopsis-main"]');
 		if (
 			(await button.count()) === 1 &&
+			(await button.isVisible()) &&
 			(await button.getAttribute("aria-expanded")) === "false"
 		)
 			await button.click();

@@ -136,6 +136,42 @@ test("BOOKWALKER metadata isolates product fields and flows through shared stora
 	}
 });
 
+test("BOOKWALKER handles latest badges, short synopses and missing optional fields", async () => {
+	const browser = await chromium.launch();
+	try {
+		const page = await browser.newPage();
+		let body =
+			html.replace("架空の書名</h1>", "【最新刊】架空の書名</h1>") +
+			'<button style="display:none" aria-controls="detail-synopsis-main" aria-expanded="false">あらすじを読む</button>';
+		await page.route("**/*", (route) =>
+			route.fulfill({ contentType: "text/html; charset=utf-8", body }),
+		);
+		await page.goto(url);
+		await bookwalkerAdapter.waitForMetadata(page);
+		const report = await readBookwalkerMetadata(page, id);
+		assert.equal(report.title, "【最新刊】架空の書名");
+		assert.equal(report.description, "紹介文限定語");
+		body = body.replace("架空の書名</a>", "別の書名</a>");
+		await page.reload();
+		await assert.rejects(readBookwalkerMetadata(page, id));
+		body = `<h1 class="t-c-product-main-data__title">架空の書名</h1><a href="${url}">架空の書名</a><dl class="t-c-detail-about-information__data"><dt>著者</dt><dd>架空著者</dd></dl>`;
+		await page.reload();
+		await bookwalkerAdapter.waitForMetadata(page);
+		const missing = await readBookwalkerMetadata(page, id);
+		assert.deepEqual(missing.missingFields, [
+			"publisher",
+			"description",
+			"categories",
+			"series",
+		]);
+		assert.equal(missing.label, null);
+		assert.equal(missing.distributionDateText, null);
+		assert.deepEqual(missing.genres, []);
+	} finally {
+		await browser.close();
+	}
+});
+
 test("a registered third adapter imports ownership and metadata through shared storage and queries", async () => {
 	const adapter = {
 		...bookwalkerAdapter,

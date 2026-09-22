@@ -40,7 +40,10 @@ export async function readBookwalkerMetadata(page: Page, productId: string) {
 			linkedIdentity: Array.from(document.querySelectorAll("a")).some(
 				(a) =>
 					a.href === location.origin + location.pathname &&
-					(a.textContent?.replace(/\s+/g, " ").trim() || null) === title,
+					((a.textContent?.replace(/\s+/g, " ").trim() || null) === title ||
+						(title?.startsWith("【最新刊】") === true &&
+							a.textContent?.replace(/\s+/g, " ").trim() ===
+								title.slice("【最新刊】".length).trim())),
 			),
 			description:
 				synopsis.length === 1
